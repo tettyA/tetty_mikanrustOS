@@ -1,0 +1,10 @@
+*.img
+*.o
+*.d
+*.bin
+*.efi
+/tettyaOS/*
+/target/*
+.vscode
+.devcontainer
+mnt/
