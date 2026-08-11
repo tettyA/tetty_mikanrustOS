@@ -4,12 +4,13 @@
 mod font;
 mod frame_buffer_config;
 mod graphics;
-use crate::font::write_ascii;
+use crate::font::{StringWriter, write_ascii, write_string};
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::frame_buffer_config::PixelFormat::{
     kPixelBGRResv8BitPerColor, kPixelRGBResv8BitPerColor,
 };
 use crate::graphics::{Bgrpixelwriter, PixelColor, PixelWriter, Rgbpixelwriter};
+use core::fmt::Write;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -53,77 +54,46 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
             );
         }
     }
-
-    write_ascii(
+    {
+        let mut i = 0;
+        for c in '!'..'~' {
+            write_ascii(pixel_writer, 8 * i, 10, c, &PixelColor { r: 0, g: 0, b: 0 });
+            i += 1;
+        }
+    }
+    write_string(
         pixel_writer,
-        40,
-        50,
-        't',
+        0,
+        30,
+        "Hello ##tettyA## Syste/\\/\\  World!",
         &PixelColor {
-            r: 25,
-            g: 205,
-            b: 150,
-        },
-    );
-    write_ascii(
-        pixel_writer,
-        50,
-        50,
-        'e',
-        &PixelColor {
-            r: 250,
-            g: 205,
-            b: 50,
-        },
-    );
-    write_ascii(
-        pixel_writer,
-        60,
-        50,
-        't',
-        &PixelColor {
-            r: 20,
-            g: 205,
-            b: 50,
-        },
-    );
-
-    write_ascii(
-        pixel_writer,
-        70,
-        50,
-        't',
-        &PixelColor {
-            r: 145,
-            g: 25,
-            b: 50,
-        },
-    );
-    write_ascii(
-        pixel_writer,
-        80,
-        50,
-        'y',
-        &PixelColor {
-            r: 145,
+            r: 150,
             g: 150,
             b: 0,
         },
     );
-    write_ascii(
+
+    let mut drawer = StringWriter::new(
         pixel_writer,
-        90,
-        50,
-        'A',
-        &PixelColor { r: 152, g: 0, b: 5 },
+        150,
+        150,
+        &PixelColor {
+            r: 150,
+            g: 150,
+            b: 0,
+        },
     );
-    write_ascii(
+    let count = 1580;
+    write!(drawer, "Counter : {} (0x{:X})", count, count).unwrap();
+    write_stringf!(
         pixel_writer,
-        100,
-        50,
-        '@',
-        &PixelColor { r: 2, g: 0, b: 255 },
+        0,
+        170,
+        &PixelColor { r: 10, g: 0, b: 10 },
+        "5 + 5 ={}",
+        5 + 5
     );
+    write_stringf!(pixel_writer,0,180,R:10,G:50,B:0,"RGB 10+10={}",10+10);
     loop {
         unsafe { asm!("hlt") }
     }
