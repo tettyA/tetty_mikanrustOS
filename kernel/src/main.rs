@@ -1,7 +1,9 @@
 #![no_main] // disable all Rust-level entry points
 #![no_std] // don't lonk the Rust standart library
 
+mod font;
 mod frame_buffer_config;
+use crate::font::write_ascii;
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::frame_buffer_config::PixelFormat::{
     kPixelBGRResv8BitPerColor, kPixelRGBResv8BitPerColor,
@@ -106,6 +108,29 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
             );
         }
     }
+
+    write_ascii(
+        pixel_writer,
+        50,
+        50,
+        'A',
+        &PixelColor {
+            r: 25,
+            g: 205,
+            b: 150,
+        },
+    );
+    write_ascii(
+        pixel_writer,
+        50,
+        70,
+        'A',
+        &PixelColor {
+            r: 250,
+            g: 205,
+            b: 50,
+        },
+    );
     loop {
         unsafe { asm!("hlt") }
     }
