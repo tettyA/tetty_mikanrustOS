@@ -1,9 +1,11 @@
 #![no_main] // disable all Rust-level entry points
 #![no_std] // don't lonk the Rust standart library
 
+mod console;
 mod font;
 mod frame_buffer_config;
 mod graphics;
+use crate::console::Console;
 use crate::font::{StringWriter, write_ascii, write_string};
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::frame_buffer_config::PixelFormat::{
@@ -57,7 +59,13 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
     {
         let mut i = 0;
         for c in '!'..'~' {
-            write_ascii(pixel_writer, 8 * i, 10, c, &PixelColor { r: 0, g: 0, b: 0 });
+            write_ascii(
+                pixel_writer,
+                8 * i,
+                10,
+                c as u8,
+                &PixelColor { r: 0, g: 0, b: 0 },
+            );
             i += 1;
         }
     }
@@ -73,18 +81,6 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
         },
     );
 
-    let mut drawer = StringWriter::new(
-        pixel_writer,
-        150,
-        150,
-        &PixelColor {
-            r: 150,
-            g: 150,
-            b: 0,
-        },
-    );
-    let count = 1580;
-    write!(drawer, "Counter : {} (0x{:X})", count, count).unwrap();
     write_stringf!(
         pixel_writer,
         0,
@@ -94,6 +90,20 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
         5 + 5
     );
     write_stringf!(pixel_writer,0,180,R:10,G:50,B:0,"RGB 10+10={}",10+10);
+
+    let mut console = Console::new(
+        pixel_writer,
+        PixelColor { r: 0, g: 0, b: 0 },
+        PixelColor {
+            r: 120,
+            g: 120,
+            b: 120,
+        },
+    );
+    for i in 0..28 {
+        write!(console, "Line nunmber:{}\n", i + 1);
+    }
+    console.put_string("Last Line (^^)");
     loop {
         unsafe { asm!("hlt") }
     }

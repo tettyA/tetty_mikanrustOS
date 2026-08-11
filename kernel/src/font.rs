@@ -2,7 +2,7 @@ use crate::{PixelColor, PixelWriter};
 use core::fmt;
 const FONT: &[u8; 4096] = include_bytes!("../hankaku.bin");
 
-pub fn write_ascii(writer: &dyn PixelWriter, x: usize, y: usize, c: char, color: &PixelColor) {
+pub fn write_ascii(writer: &dyn PixelWriter, x: usize, y: usize, c: u8, color: &PixelColor) {
     let font_index = c as usize * 16;
     let font_data = &FONT[font_index..(font_index + 16)];
 
@@ -17,7 +17,7 @@ pub fn write_ascii(writer: &dyn PixelWriter, x: usize, y: usize, c: char, color:
 
 pub fn write_string(writer: &dyn PixelWriter, mut x: usize, y: usize, s: &str, color: &PixelColor) {
     for c in s.bytes() {
-        write_ascii(writer, x, y, c as char, color);
+        write_ascii(writer, x, y, c as u8, color);
         x += 8;
     }
 }
