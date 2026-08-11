@@ -56,9 +56,9 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
 
     write_ascii(
         pixel_writer,
+        40,
         50,
-        50,
-        'A',
+        't',
         &PixelColor {
             r: 25,
             g: 205,
@@ -68,13 +68,61 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
     write_ascii(
         pixel_writer,
         50,
-        70,
-        'A',
+        50,
+        'e',
         &PixelColor {
             r: 250,
             g: 205,
             b: 50,
         },
+    );
+    write_ascii(
+        pixel_writer,
+        60,
+        50,
+        't',
+        &PixelColor {
+            r: 20,
+            g: 205,
+            b: 50,
+        },
+    );
+
+    write_ascii(
+        pixel_writer,
+        70,
+        50,
+        't',
+        &PixelColor {
+            r: 145,
+            g: 25,
+            b: 50,
+        },
+    );
+    write_ascii(
+        pixel_writer,
+        80,
+        50,
+        'y',
+        &PixelColor {
+            r: 145,
+            g: 150,
+            b: 0,
+        },
+    );
+    write_ascii(
+        pixel_writer,
+        90,
+        50,
+        'A',
+        &PixelColor { r: 152, g: 0, b: 5 },
+    );
+    write_ascii(
+        pixel_writer,
+        100,
+        50,
+        '@',
+        &PixelColor { r: 2, g: 0, b: 255 },
     );
     loop {
         unsafe { asm!("hlt") }
