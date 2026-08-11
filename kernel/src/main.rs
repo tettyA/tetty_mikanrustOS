@@ -3,71 +3,16 @@
 
 mod font;
 mod frame_buffer_config;
+mod graphics;
 use crate::font::write_ascii;
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::frame_buffer_config::PixelFormat::{
     kPixelBGRResv8BitPerColor, kPixelRGBResv8BitPerColor,
 };
+use crate::graphics::{Bgrpixelwriter, PixelColor, PixelWriter, Rgbpixelwriter};
 
 use core::arch::asm;
 use core::panic::PanicInfo;
-use core::ptr;
-
-pub trait PixelWriter {
-    fn write(&self, x: usize, y: usize, c: &PixelColor);
-}
-
-pub struct Bgrpixelwriter {
-    frame_buffer: *mut u8,
-    pixels_per_scan_line: usize,
-}
-impl Bgrpixelwriter {
-    fn new(config: &FrameBufferConfig) -> Self {
-        Self {
-            frame_buffer: config.frame_buffer,
-            pixels_per_scan_line: config.pixels_per_scan_line as usize,
-        }
-    }
-}
-impl PixelWriter for Bgrpixelwriter {
-    fn write(&self, x: usize, y: usize, c: &PixelColor) {
-        let pixel_posititon = (self.pixels_per_scan_line as usize * y) + x;
-        let offset = 4 * pixel_posititon as usize;
-        unsafe {
-            ptr::write_volatile(self.frame_buffer.add(offset), c.b);
-            ptr::write_volatile(self.frame_buffer.add(offset + 1), c.g);
-            ptr::write_volatile(self.frame_buffer.add(offset + 2), c.r);
-        }
-    }
-}
-pub struct Rgbpixelwriter {
-    frame_buffer: *mut u8,
-    pixels_per_scan_line: usize,
-}
-impl Rgbpixelwriter {
-    fn new(config: &FrameBufferConfig) -> Self {
-        Self {
-            frame_buffer: config.frame_buffer,
-            pixels_per_scan_line: config.pixels_per_scan_line as usize,
-        }
-    }
-}
-impl PixelWriter for Rgbpixelwriter {
-    fn write(&self, x: usize, y: usize, c: &PixelColor) {
-        let pixel_posititon = (self.pixels_per_scan_line as usize * y) + x;
-        let offset = 4 * pixel_posititon as usize;
-        unsafe {
-            ptr::write_volatile(self.frame_buffer.add(offset), c.r);
-            ptr::write_volatile(self.frame_buffer.add(offset + 1), c.g);
-            ptr::write_volatile(self.frame_buffer.add(offset + 2), c.b);
-        }
-    }
-}
-pub struct PixelColor {
-    r: u8,
-    g: u8,
-    b: u8,
-}
 
 // must wrap the attribute 'no_mangle' by unsafe(...)
 #[unsafe(no_mangle)] // don't mangle the name of this function

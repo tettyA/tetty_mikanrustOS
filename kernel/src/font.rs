@@ -1,7 +1,4 @@
-use crate::{
-    PixelColor, PixelWriter,
-    frame_buffer_config::{FrameBufferConfig, PixelFormat},
-};
+use crate::{PixelColor, PixelWriter};
 const FONT: [u8; 16] = [
     0b00000000, //
     0b00011000, // ...##...
