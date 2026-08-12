@@ -4,9 +4,10 @@ OBJS = usb/memory.o usb/device.o usb/xhci/ring.o usb/xhci/trb.o usb/xhci/xhci.o 
        usb/classdriver/base.o usb/classdriver/hid.o usb/classdriver/keyboard.o \
        usb/classdriver/mouse.o \
 	   usb_wrapper/asmfunc.o \
-	   usb_wrapper/pci.o usb_wrapper/usb_wrapper.o
+	   usb_wrapper/pci.o usb_wrapper/usb_wrapper.o \
+	   logger.o cxx_stubs.o
 
-
+CFLAGS   += -O2 -Wall -g --target=x86_64-elf -ffreestanding -mno-red-zone
 CPPFLAGS += -I.
 CXXFLAGS += -O2 -Wall -g --target=x86_64-elf -ffreestanding -mno-red-zone \
             -fno-exceptions -fno-rtti -std=c++17
@@ -21,6 +22,9 @@ clean:
 
 %.o: %.cpp 
 	clang++ $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+%.o: %.c 
+	clang $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 %.o: %.asm 
 	nasm -f elf64 -o $@ $<
