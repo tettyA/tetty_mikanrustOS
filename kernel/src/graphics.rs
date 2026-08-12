@@ -1,5 +1,5 @@
 use crate::frame_buffer_config::FrameBufferConfig;
-use core::ops::Add;
+use core::ops::{Add, AddAssign};
 use core::ptr;
 pub trait PixelWriter {
     fn write(&self, x: usize, y: usize, c: &PixelColor);
@@ -106,6 +106,16 @@ where
             x: self.x + rhs.x,
             y: self.y + rhs.y,
         }
+    }
+}
+
+impl<T> AddAssign for Vector2D<T>
+where
+    T: Add<Output = T> + Copy,
+{
+    fn add_assign(&mut self, rhs: Self) {
+        self.x = self.x + rhs.x;
+        self.y = self.y + rhs.y;
     }
 }
 #[derive(Clone, Copy)]
