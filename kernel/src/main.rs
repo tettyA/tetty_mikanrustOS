@@ -20,6 +20,10 @@ use core::fmt::Write;
 use core::arch::asm;
 use core::panic::PanicInfo;
 
+unsafe extern "C" {
+    fn usb_enumarate();
+}
+
 const DESKTOP_BGCOLOR: PixelColor = PixelColor {
     r: 120,
     g: 255,
@@ -143,6 +147,11 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
             }
         }
     }
+
+    unsafe {
+        usb_enumarate();
+    }
+    console.write_str("Success ScanAllBus");
 
     loop {
         unsafe { asm!("hlt") }

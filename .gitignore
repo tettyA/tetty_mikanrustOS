@@ -4,10 +4,12 @@
 *.bin
 *.efi
 *.elf
+*.a
 hankaku.txt
 /tettyaOS/*
 /target/*
 .vscode
 .devcontainer
 mnt/
+kernel/usb/*
 tools/*
