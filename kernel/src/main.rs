@@ -21,8 +21,12 @@ use core::arch::asm;
 use core::panic::PanicInfo;
 
 unsafe extern "C" {
+    fn usb_process_events();
     fn usb_enumarate();
+    fn usb_set_mouse_obserever(observer: extern "C" fn(i8, i8));
 }
+
+extern "C" fn moverelative(displacement_x: i8, displacement_y: i8) {}
 
 const DESKTOP_BGCOLOR: PixelColor = PixelColor {
     r: 120,
@@ -149,12 +153,16 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
     }
 
     unsafe {
+        usb_set_mouse_obserever(moverelative);
+
         usb_enumarate();
     }
     console.write_str("Success ScanAllBus");
 
     loop {
-        unsafe { asm!("hlt") }
+        unsafe {
+            usb_process_events();
+        }
     }
 }
 

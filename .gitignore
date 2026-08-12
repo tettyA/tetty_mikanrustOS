@@ -11,5 +11,5 @@ hankaku.txt
 .vscode
 .devcontainer
 mnt/
-kernel/usb/*
+kernel/usb_wrapper/usb/*
 tools/*

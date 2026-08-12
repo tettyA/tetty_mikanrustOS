@@ -17,11 +17,9 @@ mv Build/MikanLoaderX64/DEBUG_CLANG38/X64/Loader.efi $ORIGINAL_DIR/Loader.efi
 # Build C++ Wraper Library
 
 source $HOME/osbook/devenv/buildenv.sh
-cd "$ORIGINAL_DIR"/kernel/usb_wrapper/
-nasm -f elf64 -o asmfunc.o asmfunc.asm
-clang++ $CPPFLAGS -I. -O2 -Wall -g --target=x86_64-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++17 -c pci.cpp usb_wrapper.cpp
-ar rcs $ORIGINAL_DIR/kernel/usb_wrapper/libusb_wrapper.a pci.o usb_wrapper.o asmfunc.o
 
+cd "$ORIGINAL_DIR/kernel/"
+make
 
 # Build Rust Kernel
 cd "$ORIGINAL_DIR"
