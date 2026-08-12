@@ -1,4 +1,5 @@
 use crate::frame_buffer_config::FrameBufferConfig;
+use core::ops::Add;
 use core::ptr;
 pub trait PixelWriter {
     fn write(&self, x: usize, y: usize, c: &PixelColor);
@@ -50,6 +51,64 @@ impl PixelWriter for Rgbpixelwriter {
         }
     }
 }
+
+pub fn fill_rectrange<T>(
+    writer: &dyn PixelWriter,
+    pos: &Vector2D<T>,
+    size: &Vector2D<T>,
+    c: &PixelColor,
+) where
+    T: Copy + Into<usize>,
+{
+    for dy in 0..size.y.into() {
+        for dx in 0..size.x.into() {
+            writer.write(pos.x.into() + dx, pos.y.into() + dy, c);
+        }
+    }
+}
+
+pub fn draw_rectrange<T>(
+    writer: &dyn PixelWriter,
+    pos: &Vector2D<T>,
+    size: &Vector2D<T>,
+    c: &PixelColor,
+) where
+    T: Copy + Into<usize>,
+{
+    for dy in 0..size.y.into() {
+        writer.write(pos.x.into(), pos.y.into() + dy, c);
+        writer.write(pos.x.into() + size.x.into() - 1, pos.y.into() + dy, c);
+    }
+    for dx in 0..size.x.into() {
+        writer.write(pos.x.into() + dx, pos.y.into(), c);
+        writer.write(pos.x.into() + dx, pos.y.into() + size.y.into() - 1, c);
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Vector2D<T> {
+    pub x: T,
+    pub y: T,
+}
+
+/*impl<T> Vector2D<T> {
+    pub fn new(x: T, y: T) -> Self {
+        Self { x, y }
+    }
+}*/
+impl<T> Add for Vector2D<T>
+where
+    T: Add<Output = T>,
+{
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        Vector2D {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+#[derive(Clone, Copy)]
 pub struct PixelColor {
     pub r: u8,
     pub g: u8,

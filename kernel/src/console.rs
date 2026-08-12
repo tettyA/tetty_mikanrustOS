@@ -1,6 +1,30 @@
 use crate::font::{write_ascii, write_string};
 use crate::graphics::{PixelColor, PixelWriter};
 use core::fmt;
+
+/*
+pub static mut CONSOLE: Option<Console<'static>> = None;
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => {
+        unsafe{
+            let _=write!(console,format_args!($($arg:tt)*));
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! println {
+    () => {
+        print!("\n");
+    };
+    ($($arg:tt)*) => {
+        crate::print!("{}\n",format_args!($($arg:tt)*));
+    };
+}
+
+    */
 pub struct Console<'a> {
     writer: &'a dyn PixelWriter,
     fg_color: PixelColor,
