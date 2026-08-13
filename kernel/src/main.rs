@@ -7,17 +7,19 @@ mod frame_buffer_config;
 mod graphics;
 mod interrupts;
 mod mousecursor;
+mod queue;
 use crate::console::Console;
 use crate::font::{write_ascii, write_string};
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::frame_buffer_config::PixelFormat::{
     kPixelBGRResv8BitPerColor, kPixelRGBResv8BitPerColor,
 };
+
 use crate::graphics::{
     Bgrpixelwriter, PixelColor, PixelWriter, Rgbpixelwriter, Vector2D, draw_rectrange,
     fill_rectrange,
 };
-use crate::interrupts::init_idt;
+use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::mousecursor::MOUSE_CURSOR;
 use core::fmt::Write;
 
@@ -29,6 +31,7 @@ unsafe extern "C" {
     fn usb_process_events();
     fn usb_enumarate();
     fn usb_set_mouse_obserever(observer: extern "C" fn(i8, i8));
+    fn xhc_primaryeventring_hasfront() -> bool;
 }
 
 const DESKTOP_BGCOLOR: PixelColor = PixelColor {
@@ -133,7 +136,22 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
 
     loop {
         unsafe {
-            asm!("Hlt");
+            asm!("cli");
+            let q = &mut *addr_of_mut!(INTERRUPTMESSAGE_QUEUE);
+
+            if let Some(msg) = q.pop() {
+                asm!("sti");
+                match msg {
+                    interrupts::InterruptMessage::InterruptXhci => {
+                        while xhc_primaryeventring_hasfront() {
+                            usb_process_events();
+                        }
+                    }
+                }
+            } else {
+                asm!("sti\n\thlt");
+                continue;
+            }
         }
     }
 }

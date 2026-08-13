@@ -1,11 +1,7 @@
 use core::ptr::{addr_of_mut, write_volatile};
 
-use crate::usb_process_events;
+use crate::{queue::Queue, usb_process_events};
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-
-unsafe extern "C" {
-    fn xhc_primaryeventring_hasfront() -> bool;
-}
 
 const INTERRUPTVECTOR_KXHCI: u8 = 0x40; // そう定義されている。
 
@@ -14,9 +10,7 @@ static mut IDT: InterruptDescriptorTable = InterruptDescriptorTable::new();
 
 extern "x86-interrupt" fn interrupt_handler_xhchi_mouse_cursor(stack_frame: InterruptStackFrame) {
     unsafe {
-        while xhc_primaryeventring_hasfront() {
-            usb_process_events();
-        }
+        let _ = (&mut *addr_of_mut!(INTERRUPTMESSAGE_QUEUE)).push(InterruptMessage::InterruptXhci);
     }
     unsafe {
         // ここに値を書き込むと割り込み処理完了を知らせることが出来る。
@@ -30,3 +24,9 @@ pub fn init_idt() {
         idt.load();
     }
 }
+#[derive(Clone, Copy)]
+pub enum InterruptMessage {
+    InterruptXhci,
+}
+
+pub static mut INTERRUPTMESSAGE_QUEUE: Queue<InterruptMessage> = Queue::new();
