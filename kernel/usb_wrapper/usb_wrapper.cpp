@@ -102,7 +102,7 @@ extern "C"
 
         // msi yuyukouka
         const uint8_t bsp_local_apic_id =
-            *reinterpret_cast<const uint32_t *>(0xFEE0020) >> 24;
+            *reinterpret_cast<const uint32_t *>(0xFEE00020) >> 24;
         pci::ConfigureMSIFixedDestination(
             *xhc_dev, bsp_local_apic_id,
             pci::MSITriggerMode::kLevel, pci::MSIDeliveryMode::kFixed,

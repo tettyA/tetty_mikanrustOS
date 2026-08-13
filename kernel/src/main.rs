@@ -56,17 +56,6 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
     let frame_height: usize = frame_buffer_config.vertical_resolution as usize;
 
-    unsafe {
-        let cursor = &mut *addr_of_mut!(MOUSE_CURSOR);
-        cursor.init(
-            pixel_writer,
-            Vector2D {
-                x: frame_width,
-                y: frame_height,
-            },
-        );
-    }
-
     fill_rectrange(
         pixel_writer,
         &Vector2D { x: 0, y: 0 },
@@ -124,9 +113,21 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
     // entrypoint
 
     unsafe {
+        let cursor = &mut *addr_of_mut!(MOUSE_CURSOR);
+        cursor.init(
+            pixel_writer,
+            Vector2D {
+                x: frame_width,
+                y: frame_height,
+            },
+        );
+    }
+
+    unsafe {
         usb_set_mouse_obserever(crate::mousecursor::moverelative);
 
         usb_enumarate();
+        asm!("sti");
     }
     console.write_str("Success ScanAllBus");
 

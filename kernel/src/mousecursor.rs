@@ -52,6 +52,7 @@ impl MouseCursor {
     pub unsafe fn init(&mut self, writer: *const PixelWriter, screen_size: Vector2D<usize>) {
         self.pixel_writer = Some(writer);
         self.screen_size = screen_size;
+        self.draw();
     }
 
     pub unsafe fn move_relative(&mut self, displacement: Vector2D<i32>) {
