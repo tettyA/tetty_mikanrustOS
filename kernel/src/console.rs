@@ -26,7 +26,7 @@ macro_rules! println {
 
     */
 pub struct Console<'a> {
-    writer: &'a dyn PixelWriter,
+    writer: &'a PixelWriter,
     fg_color: PixelColor,
     bg_color: PixelColor,
 
@@ -45,7 +45,7 @@ impl<'a> fmt::Write for Console<'a> {
 impl<'a> Console<'a> {
     const ROW_NUM: usize = 25;
     const COLUMN_NUM: usize = 80;
-    pub fn new(writer: &'a dyn PixelWriter, fg_color: PixelColor, bg_color: PixelColor) -> Self {
+    pub fn new(writer: &'a PixelWriter, fg_color: PixelColor, bg_color: PixelColor) -> Self {
         Self {
             writer,
             fg_color,

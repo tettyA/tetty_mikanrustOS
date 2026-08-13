@@ -1,8 +1,23 @@
 use crate::frame_buffer_config::FrameBufferConfig;
 use core::ops::{Add, AddAssign};
 use core::ptr;
-pub trait PixelWriter {
+
+pub enum PixelWriter {
+    Rgb(Rgbpixelwriter),
+    Bgr(Bgrpixelwriter),
+}
+/*pub trait PixelWriter {
     fn write(&self, x: usize, y: usize, c: &PixelColor);
+}*/
+
+impl PixelWriter {
+    #[inline(always)]
+    pub fn write(&self, x: usize, y: usize, c: &PixelColor) {
+        match self {
+            PixelWriter::Bgr(writer) => writer.write(x, y, c),
+            PixelWriter::Rgb(writer) => writer.write(x, y, c),
+        }
+    }
 }
 
 pub struct Bgrpixelwriter {
@@ -17,7 +32,7 @@ impl Bgrpixelwriter {
         }
     }
 }
-impl PixelWriter for Bgrpixelwriter {
+impl Bgrpixelwriter {
     fn write(&self, x: usize, y: usize, c: &PixelColor) {
         let pixel_posititon = (self.pixels_per_scan_line as usize * y) + x;
         let offset = 4 * pixel_posititon as usize;
@@ -40,7 +55,7 @@ impl Rgbpixelwriter {
         }
     }
 }
-impl PixelWriter for Rgbpixelwriter {
+impl Rgbpixelwriter {
     fn write(&self, x: usize, y: usize, c: &PixelColor) {
         let pixel_posititon = (self.pixels_per_scan_line as usize * y) + x;
         let offset = 4 * pixel_posititon as usize;
@@ -53,7 +68,7 @@ impl PixelWriter for Rgbpixelwriter {
 }
 
 pub fn fill_rectrange<T>(
-    writer: &dyn PixelWriter,
+    writer: &PixelWriter,
     pos: &Vector2D<T>,
     size: &Vector2D<T>,
     c: &PixelColor,
@@ -68,7 +83,7 @@ pub fn fill_rectrange<T>(
 }
 
 pub fn draw_rectrange<T>(
-    writer: &dyn PixelWriter,
+    writer: &PixelWriter,
     pos: &Vector2D<T>,
     size: &Vector2D<T>,
     c: &PixelColor,

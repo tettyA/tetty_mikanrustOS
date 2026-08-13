@@ -39,12 +39,14 @@ const DESKTOP_FGCOLOR: PixelColor = PixelColor { r: 1, g: 8, b: 17 };
 // must wrap the attribute 'no_mangle' by unsafe(...)
 #[unsafe(no_mangle)] // don't mangle the name of this function
 pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
-    let bgr = Bgrpixelwriter::new(frame_buffer_config);
-    let rgb = Rgbpixelwriter::new(frame_buffer_config);
-    let pixel_writer: &dyn PixelWriter = {
+    let pixel_writer: &PixelWriter = {
         match frame_buffer_config.pixel_format {
-            kPixelBGRResv8BitPerColor => &bgr,
-            kPixelRGBResv8BitPerColor => &rgb,
+            kPixelRGBResv8BitPerColor => {
+                &PixelWriter::Rgb(Rgbpixelwriter::new(frame_buffer_config))
+            }
+            kPixelBGRResv8BitPerColor => {
+                &PixelWriter::Bgr(Bgrpixelwriter::new(frame_buffer_config))
+            }
         }
     };
 

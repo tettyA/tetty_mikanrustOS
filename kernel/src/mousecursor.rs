@@ -34,7 +34,7 @@ const MOUSE_CURSOR_SHAPE: [&'static str; kMouseCursorHeight] = [
 ];
 
 pub struct MouseCursor {
-    pixel_writer: Option<*const dyn PixelWriter>,
+    pixel_writer: Option<*const PixelWriter>,
     position: Vector2D<i32>,
     screen_size: Vector2D<usize>,
     erase_color: PixelColor,
@@ -49,7 +49,7 @@ impl MouseCursor {
             erase_color: DESKTOP_BGCOLOR,
         }
     }
-    pub unsafe fn init(&mut self, writer: *const dyn PixelWriter, screen_size: Vector2D<usize>) {
+    pub unsafe fn init(&mut self, writer: *const PixelWriter, screen_size: Vector2D<usize>) {
         self.pixel_writer = Some(writer);
         self.screen_size = screen_size;
     }

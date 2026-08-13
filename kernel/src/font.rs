@@ -2,7 +2,7 @@ use crate::{PixelColor, PixelWriter};
 use core::fmt;
 const FONT: &[u8; 4096] = include_bytes!("../hankaku.bin");
 
-pub fn write_ascii(writer: &dyn PixelWriter, x: usize, y: usize, c: u8, color: &PixelColor) {
+pub fn write_ascii(writer: &PixelWriter, x: usize, y: usize, c: u8, color: &PixelColor) {
     let font_index = c as usize * 16;
     let font_data = &FONT[font_index..(font_index + 16)];
 
@@ -15,7 +15,7 @@ pub fn write_ascii(writer: &dyn PixelWriter, x: usize, y: usize, c: u8, color: &
     }
 }
 
-pub fn write_string(writer: &dyn PixelWriter, mut x: usize, y: usize, s: &str, color: &PixelColor) {
+pub fn write_string(writer: &PixelWriter, mut x: usize, y: usize, s: &str, color: &PixelColor) {
     for c in s.bytes() {
         write_ascii(writer, x, y, c as u8, color);
         x += 8;
@@ -23,14 +23,14 @@ pub fn write_string(writer: &dyn PixelWriter, mut x: usize, y: usize, s: &str, c
 }
 
 pub struct StringWriter<'a> {
-    writer: &'a dyn PixelWriter,
+    writer: &'a PixelWriter,
     x: usize,
     y: usize,
     color: &'a PixelColor,
 }
 
 impl<'a> StringWriter<'a> {
-    pub fn new(writer: &'a dyn PixelWriter, x: usize, y: usize, color: &'a PixelColor) -> Self {
+    pub fn new(writer: &'a PixelWriter, x: usize, y: usize, color: &'a PixelColor) -> Self {
         Self {
             writer,
             x,
