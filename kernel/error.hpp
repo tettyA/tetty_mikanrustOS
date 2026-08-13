@@ -28,6 +28,7 @@ public:
     kInvalidPhase,
     kUnknownXHCISpeedID,
     kNoWaiter,
+    kNoPCIMSI,
     kLastOfCode, // この列挙子は常に最後に配置する
   };
 
@@ -53,8 +54,9 @@ private:
       "kInvalidPhase",
       "kUnknownXHCISpeedID",
       "kNoWaiter",
+      "kNoPCIMSI",
   };
-  static_assert(static_cast<size_t>(Error::Code::kLastOfCode) == code_names_.size());
+  static_assert(Error::Code::kLastOfCode == code_names_.size());
 
 public:
   Error(Code code, const char *file, int line) : code_{code}, line_{line}, file_{file} {}
@@ -92,11 +94,9 @@ private:
 
 #define MAKE_ERROR(code) Error((code), __FILE__, __LINE__)
 
-// #@@range_begin(with_error)
 template <class T>
 struct WithError
 {
   T value;
   Error error;
 };
-// #@@range_end(with_error)

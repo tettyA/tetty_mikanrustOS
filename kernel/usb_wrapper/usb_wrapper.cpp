@@ -8,6 +8,15 @@
 #include "usb/xhci/xhci.hpp"
 #include "usb/xhci/trb.hpp"
 
+class InterruptVector
+{
+public:
+    enum Number
+    {
+        kXHCI = 0x40,
+    };
+};
+
 void SwitchEhci2Xhci(const pci::Device &xhc_dev)
 {
     bool intel_ehc_exist = false;
@@ -91,6 +100,14 @@ extern "C"
             // Log(kDebug, "xhc.Initialize: %s\n", err.Name());
         }
 
+        // msi yuyukouka
+        const uint8_t bsp_local_apic_id =
+            *reinterpret_cast<const uint32_t *>(0xFEE0020) >> 24;
+        pci::ConfigureMSIFixedDestination(
+            *xhc_dev, bsp_local_apic_id,
+            pci::MSITriggerMode::kLevel, pci::MSIDeliveryMode::kFixed,
+            InterruptVector::kXHCI, 0);
+        // 0x40 -> InterruptVector:kXHCI
         // Log(kInfo, "xHC starting\n");
         xhc->Run();
 

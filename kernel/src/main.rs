@@ -132,7 +132,7 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
 
     loop {
         unsafe {
-            usb_process_events();
+            asm!("Hlt");
         }
     }
 }
