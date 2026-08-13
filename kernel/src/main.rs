@@ -17,6 +17,7 @@ use crate::graphics::{
     Bgrpixelwriter, PixelColor, PixelWriter, Rgbpixelwriter, Vector2D, draw_rectrange,
     fill_rectrange,
 };
+use crate::interrupts::init_idt;
 use crate::mousecursor::MOUSE_CURSOR;
 use core::fmt::Write;
 
@@ -50,6 +51,7 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
             }
         }
     };
+    init_idt();
 
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
     let frame_height: usize = frame_buffer_config.vertical_resolution as usize;
