@@ -118,4 +118,9 @@ extern "C"
     {
         usb::xhci::ProcessEvent(*xhc);
     }
+
+    bool xhc_primaryeventring_hasfront()
+    {
+        return xhc->PrimaryEventRing()->HasFront();
+    }
 }

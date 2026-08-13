@@ -1,10 +1,11 @@
 #![no_main] // disable all Rust-level entry points
 #![no_std] // don't lonk the Rust standart library
-
+#![feature(abi_x86_interrupt)] // Allows extern "x86-interrupt" fn(). 
 mod console;
 mod font;
 mod frame_buffer_config;
 mod graphics;
+mod interrupts;
 mod mousecursor;
 use crate::console::Console;
 use crate::font::{write_ascii, write_string};
