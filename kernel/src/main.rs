@@ -8,6 +8,7 @@ mod graphics;
 mod interrupts;
 mod memory_map;
 mod mousecursor;
+mod paging;
 mod queue;
 mod segment;
 use crate::console::Console;
@@ -69,6 +70,7 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig, memory_map
 
 fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) -> ! {
     segment::init_segment();
+    paging::setup_identify_page_table();
 
     let pixel_writer: &PixelWriter = {
         match frame_buffer_config.pixel_format {
