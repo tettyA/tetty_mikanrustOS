@@ -9,6 +9,7 @@ mod interrupts;
 mod memory_map;
 mod mousecursor;
 mod queue;
+mod segment;
 use crate::console::Console;
 use crate::font::{write_ascii, write_string};
 use crate::frame_buffer_config::FrameBufferConfig;
@@ -67,6 +68,8 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig, memory_map
 }
 
 fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) -> ! {
+    segment::init_segment();
+
     let pixel_writer: &PixelWriter = {
         match frame_buffer_config.pixel_format {
             kPixelRGBResv8BitPerColor => {
