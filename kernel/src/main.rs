@@ -6,6 +6,7 @@ mod font;
 mod frame_buffer_config;
 mod graphics;
 mod interrupts;
+mod memory_map;
 mod mousecursor;
 mod queue;
 use crate::console::Console;
@@ -20,12 +21,13 @@ use crate::graphics::{
     fill_rectrange,
 };
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
+use crate::memory_map::{MemoryDescriptor, MemoryMap};
 use crate::mousecursor::MOUSE_CURSOR;
 use core::fmt::Write;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
-use core::ptr::addr_of_mut;
+use core::ptr::{addr_of_mut, read_volatile};
 
 unsafe extern "C" {
     fn usb_process_events();
@@ -43,7 +45,7 @@ const DESKTOP_FGCOLOR: PixelColor = PixelColor { r: 1, g: 8, b: 17 };
 
 // must wrap the attribute 'no_mangle' by unsafe(...)
 #[unsafe(no_mangle)] // don't mangle the name of this function
-pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
+pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) -> ! {
     let pixel_writer: &PixelWriter = {
         match frame_buffer_config.pixel_format {
             kPixelRGBResv8BitPerColor => {
@@ -132,7 +134,26 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig) -> ! {
         usb_enumarate();
         asm!("sti");
     }
-    console.write_str("Success ScanAllBus");
+    console.write_str("Success ScanAllBus\n");
+
+    write!(console, "memory_map: {:p}\n", &memory_map);
+    for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
+        let desc: &MemoryDescriptor = unsafe {
+            let ptr = memory_map.buffer.add((i * memory_map.map_size) as usize);
+            &*(ptr as *const MemoryDescriptor)
+        };
+        if desc.memory_type().is_available() {
+            write!(
+                console,
+                "type = {:?}, phys = {:08x} - {:08x}, pages = {}, attr = {:x}\n",
+                desc.memory_type(),
+                desc.physical_start,
+                desc.physical_start + desc.number_of_pages * 4096 - 1,
+                desc.number_of_pages,
+                desc.attribute
+            );
+        }
+    }
 
     loop {
         unsafe {
