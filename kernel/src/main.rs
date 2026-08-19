@@ -42,10 +42,31 @@ const DESKTOP_BGCOLOR: PixelColor = PixelColor {
     b: 125,
 };
 const DESKTOP_FGCOLOR: PixelColor = PixelColor { r: 1, g: 8, b: 17 };
+#[repr(align(16))]
+struct KernelStack([u8; 1024 * 1024]);
+
+// exclusive stack for kernel
+static KERNEL_STACK: KernelStack = KernelStack([0; 1024 * 1024]);
 
 // must wrap the attribute 'no_mangle' by unsafe(...)
 #[unsafe(no_mangle)] // don't mangle the name of this function
-pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) -> ! {
+pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) {
+    let kernel_main_stack_top_addr = KERNEL_STACK.0.as_ptr() as usize + (1024 * 1024);
+
+    unsafe {
+        asm!(
+        "mov rsp, {stack}",
+        "call {func}",
+        stack=in(reg) kernel_main_stack_top_addr,
+        func=sym KernelMainNewStack,
+        in("rdi") frame_buffer_config,
+        in("rsi") memory_map,
+        options(noreturn)
+            );
+    }
+}
+
+fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) -> ! {
     let pixel_writer: &PixelWriter = {
         match frame_buffer_config.pixel_format {
             kPixelRGBResv8BitPerColor => {
