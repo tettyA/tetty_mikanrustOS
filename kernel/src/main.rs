@@ -6,6 +6,7 @@ mod font;
 mod frame_buffer_config;
 mod graphics;
 mod interrupts;
+mod memory_manager;
 mod memory_map;
 mod mousecursor;
 mod paging;
@@ -23,6 +24,9 @@ use crate::graphics::{
     fill_rectrange,
 };
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
+use crate::memory_manager::{
+    BYTES_PER_FRAME, BitMapMamoryManager, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE,
+};
 use crate::memory_map::{MemoryDescriptor, MemoryMap};
 use crate::mousecursor::MOUSE_CURSOR;
 use core::fmt::Write;
@@ -71,6 +75,44 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig, memory_map
 fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) -> ! {
     segment::init_segment();
     paging::setup_identify_page_table();
+
+    //compile_error!("メモリマップ実装してない(8.16)");
+    unsafe {
+        let memory_manager = &mut *addr_of_mut!(MEMORY_MANAGER);
+        let mut available_end = 0 as usize;
+        for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
+            let ptr = memory_map
+                .buffer
+                .add((i * memory_map.descriptor_size) as usize);
+            let desc: &MemoryDescriptor = &*(ptr as *const MemoryDescriptor);
+            if available_end < desc.physical_start as usize {
+                memory_manager.mark_allocated(
+                    FrameID {
+                        id: available_end as usize / BYTES_PER_FRAME,
+                    },
+                    (desc.physical_start as usize - available_end as usize) / BYTES_PER_FRAME,
+                );
+            }
+            let physical_end =
+                desc.physical_start as usize + desc.number_of_pages as usize * UEFI_PAGE_SIZE;
+            if desc.memory_type().is_available() {
+                available_end = physical_end;
+            } else {
+                memory_manager.mark_allocated(
+                    FrameID {
+                        id: desc.physical_start as usize / BYTES_PER_FRAME,
+                    },
+                    desc.number_of_pages as usize * UEFI_PAGE_SIZE / BYTES_PER_FRAME,
+                );
+            }
+        }
+        memory_manager.set_memory_range(
+            FrameID { id: 0 },
+            FrameID {
+                id: available_end / BYTES_PER_FRAME,
+            },
+        );
+    }
 
     let pixel_writer: &PixelWriter = {
         match frame_buffer_config.pixel_format {
@@ -165,7 +207,9 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     write!(console, "memory_map: {:p}\n", &memory_map);
     for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
         let desc: &MemoryDescriptor = unsafe {
-            let ptr = memory_map.buffer.add((i * memory_map.map_size) as usize);
+            let ptr = memory_map
+                .buffer
+                .add((i * memory_map.descriptor_size) as usize);
             &*(ptr as *const MemoryDescriptor)
         };
         if desc.memory_type().is_available() {
