@@ -101,11 +101,7 @@ impl MouseCursor {
         for (dy, s) in MOUSE_CURSOR_SHAPE.iter().enumerate() {
             for (dx, c) in s.chars().enumerate() {
                 if c == '@' {
-                    writer.write(
-                        dx,
-                        dy,
-                        &PixelColor { r: 0, g: 0, b: 0 },
-                    );
+                    writer.write(dx, dy, &PixelColor { r: 0, g: 0, b: 0 });
                 } else if c == '.' {
                     writer.write(
                         dx,
