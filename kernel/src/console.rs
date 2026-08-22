@@ -1,5 +1,5 @@
 use crate::font::{write_ascii, write_string};
-use crate::graphics::{PixelColor, PixelWriter};
+use crate::graphics::{PixelColor, PixelDraw, PixelWriter};
 use core::fmt;
 
 /*

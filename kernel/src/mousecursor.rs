@@ -2,7 +2,7 @@ use core::ptr::addr_of_mut;
 
 use crate::{
     DESKTOP_BGCOLOR,
-    graphics::{PixelColor, PixelWriter, Vector2D},
+    graphics::{PixelColor, PixelDraw, PixelWriter, Vector2D},
 };
 const kMouseCursorWidth: usize = 15;
 const kMouseCursorHeight: usize = 24;

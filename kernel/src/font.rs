@@ -1,4 +1,4 @@
-use crate::{PixelColor, PixelWriter};
+use crate::{PixelColor, PixelWriter, graphics::PixelDraw};
 use core::fmt;
 const FONT: &[u8; 4096] = include_bytes!("../hankaku.bin");
 
