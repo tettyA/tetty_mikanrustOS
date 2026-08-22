@@ -25,7 +25,7 @@ impl BitMapMamoryManager {
 
     pub const fn new() -> Self {
         Self {
-            alloc_map: [!0; Self::BITMAP_LENGTH],
+            alloc_map: [0; Self::BITMAP_LENGTH],
             range_begin: FrameID { id: 0 },
             range_end: FrameID {
                 id: Self::FRAME_COUNT,

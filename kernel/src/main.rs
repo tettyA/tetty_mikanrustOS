@@ -1,6 +1,7 @@
 #![no_main] // disable all Rust-level entry points
 #![no_std] // don't lonk the Rust standart library
 #![feature(abi_x86_interrupt)] // Allows extern "x86-interrupt" fn(). 
+mod allocator;
 mod console;
 mod font;
 mod frame_buffer_config;
@@ -12,6 +13,7 @@ mod mousecursor;
 mod paging;
 mod queue;
 mod segment;
+extern crate alloc;
 use crate::console::Console;
 use crate::font::{write_ascii, write_string};
 use crate::frame_buffer_config::FrameBufferConfig;
@@ -113,7 +115,6 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             },
         );
     }
-
     let pixel_writer: &PixelWriter = {
         match frame_buffer_config.pixel_format {
             kPixelRGBResv8BitPerColor => {
@@ -128,6 +129,17 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
 
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
     let frame_height: usize = frame_buffer_config.vertical_resolution as usize;
+
+    fill_rectrange(
+        pixel_writer,
+        &Vector2D { x: 0, y: 0 },
+        &Vector2D {
+            x: frame_width,
+            y: frame_height,
+        },
+        &PixelColor { r: 255, g: 0, b: 0 },
+    );
+    allocator::init_heap();
 
     fill_rectrange(
         pixel_writer,
