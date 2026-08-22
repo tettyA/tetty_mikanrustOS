@@ -1,11 +1,16 @@
 use core::ptr::addr_of_mut;
 
 use crate::{
-    DESKTOP_BGCOLOR,
-    graphics::{PixelColor, PixelDraw, PixelWriter, Vector2D},
+    graphics::{PixelColor, PixelDraw, Vector2D},
+    layer::LayerManager,
 };
-const kMouseCursorWidth: usize = 15;
-const kMouseCursorHeight: usize = 24;
+pub const kMouseCursorWidth: usize = 15;
+pub const kMouseCursorHeight: usize = 24;
+pub const MOUSE_CURSOR_TRANSPARENT_COLOR: PixelColor = PixelColor {
+    r: 255,
+    g: 0,
+    b: 255,
+};
 const MOUSE_CURSOR_SHAPE: [&'static str; kMouseCursorHeight] = [
     "@              ",
     "@@             ",
@@ -34,33 +39,41 @@ const MOUSE_CURSOR_SHAPE: [&'static str; kMouseCursorHeight] = [
 ];
 
 pub struct MouseCursor {
-    pixel_writer: Option<*const PixelWriter>,
+    layer_manager: Option<*mut LayerManager>,
+    layer_id: u32,
+    redraw: Option<fn()>,
     position: Vector2D<i32>,
     screen_size: Vector2D<usize>,
-    erase_color: PixelColor,
 }
 
 impl MouseCursor {
     pub const fn new() -> Self {
         Self {
-            pixel_writer: None,
+            layer_manager: None,
+            layer_id: 0,
+            redraw: None,
             position: Vector2D { x: 200, y: 300 },
             screen_size: Vector2D { x: 100, y: 100 },
-            erase_color: DESKTOP_BGCOLOR,
         }
     }
-    pub unsafe fn init(&mut self, writer: *const PixelWriter, screen_size: Vector2D<usize>) {
-        self.pixel_writer = Some(writer);
+    pub unsafe fn init(
+        &mut self,
+        layer_manager: *mut LayerManager,
+        layer_id: u32,
+        screen_size: Vector2D<usize>,
+        redraw: fn(),
+    ) {
+        self.layer_manager = Some(layer_manager);
+        self.layer_id = layer_id;
         self.screen_size = screen_size;
-        self.draw();
+        self.redraw = Some(redraw);
     }
 
     pub unsafe fn move_relative(&mut self, displacement: Vector2D<i32>) {
-        if self.pixel_writer.is_none() {
+        if self.layer_manager.is_none() {
             return;
         }
 
-        self.erase();
         self.position += displacement;
         if self.position.x < 0 {
             self.position.x = 0;
@@ -74,44 +87,34 @@ impl MouseCursor {
         if self.position.y >= self.screen_size.y as i32 {
             self.position.y = self.screen_size.y as i32 - 1;
         }
-        self.draw();
-    }
-
-    fn draw(&self) {
-        if let Some(writer_ptr) = self.pixel_writer {
-            let writer = unsafe { &*writer_ptr };
-            for (dy, s) in MOUSE_CURSOR_SHAPE.iter().enumerate() {
-                for (dx, c) in s.chars().enumerate() {
-                    if c == '@' {
-                        writer.write(
-                            self.position.x as usize + dx,
-                            self.position.y as usize + dy,
-                            &PixelColor { r: 0, g: 0, b: 0 },
-                        );
-                    } else if c == '.' {
-                        writer.write(
-                            self.position.x as usize + dx,
-                            self.position.y as usize + dy,
-                            &PixelColor {
-                                r: 255,
-                                g: 255,
-                                b: 255,
-                            },
-                        );
-                    }
-                }
+        if let Some(layer_manager) = self.layer_manager {
+            unsafe {
+                (*layer_manager).move_layer(self.layer_id, self.position);
             }
         }
+        if let Some(redraw) = self.redraw {
+            redraw();
+        }
     }
-    fn erase(&self) {
-        if let Some(writer_ptr) = self.pixel_writer {
-            let writer = unsafe { &*writer_ptr };
-            for dy in 0..kMouseCursorHeight as i32 {
-                for dx in 0..kMouseCursorWidth as i32 {
+
+    pub fn draw<W: PixelDraw>(&self, writer: &W) {
+        for (dy, s) in MOUSE_CURSOR_SHAPE.iter().enumerate() {
+            for (dx, c) in s.chars().enumerate() {
+                if c == '@' {
                     writer.write(
-                        (self.position.x + dx) as usize,
-                        (self.position.y + dy) as usize,
-                        &self.erase_color,
+                        dx,
+                        dy,
+                        &PixelColor { r: 0, g: 0, b: 0 },
+                    );
+                } else if c == '.' {
+                    writer.write(
+                        dx,
+                        dy,
+                        &PixelColor {
+                            r: 255,
+                            g: 255,
+                            b: 255,
+                        },
                     );
                 }
             }
@@ -119,7 +122,6 @@ impl MouseCursor {
     }
 }
 pub static mut MOUSE_CURSOR: MouseCursor = MouseCursor::new();
-
 pub extern "C" fn moverelative(displacement_x: i8, displacement_y: i8) {
     unsafe {
         let cursor = &mut *addr_of_mut!(MOUSE_CURSOR);

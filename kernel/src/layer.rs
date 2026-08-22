@@ -4,14 +4,13 @@ use alloc::{boxed::Box, rc::Rc, vec::Vec};
 
 use crate::{
     graphics::{PixelWriter, Vector2D},
-    layer,
     window::Window,
 };
 
 pub struct Layer {
-    id: u32,
+    pub id: u32,
     z: i32,
-    pos: Vector2D<i32>,
+    pub pos: Vector2D<i32>,
     window: Option<Rc<RefCell<Window>>>,
 }
 

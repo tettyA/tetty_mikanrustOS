@@ -16,28 +16,30 @@ mod queue;
 mod segment;
 mod window;
 extern crate alloc;
-use crate::console::Console;
-use crate::font::{write_ascii, write_string};
+use alloc::rc::Rc;
+
+use crate::console::{Console, ConsoleWriter};
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::frame_buffer_config::PixelFormat::{
     kPixelBGRResv8BitPerColor, kPixelRGBResv8BitPerColor,
 };
 
 use crate::graphics::{
-    Bgrpixelwriter, PixelColor, PixelWriter, Rgbpixelwriter, Vector2D, draw_rectrange,
+    Bgrpixelwriter, PixelColor, PixelDraw, PixelWriter, Rgbpixelwriter, Vector2D, draw_rectrange,
     fill_rectrange,
 };
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
-use crate::memory_manager::{
-    BYTES_PER_FRAME, BitMapMamoryManager, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE,
-};
+use crate::layer::LayerManager;
+use crate::memory_manager::{BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE};
 use crate::memory_map::{MemoryDescriptor, MemoryMap};
-use crate::mousecursor::MOUSE_CURSOR;
+use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
+use crate::window::Window;
+use core::cell::RefCell;
 use core::fmt::Write;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
-use core::ptr::{addr_of_mut, read_volatile};
+use core::ptr::addr_of_mut;
 
 unsafe extern "C" {
     fn usb_process_events();
@@ -57,6 +59,16 @@ struct KernelStack([u8; 1024 * 1024]);
 
 // exclusive stack for kernel
 static KERNEL_STACK: KernelStack = KernelStack([0; 1024 * 1024]);
+static mut LAYER_MANAGER: *mut LayerManager = core::ptr::null_mut();
+static mut FRAME_BUFFER_WRITER: *const PixelWriter = core::ptr::null();
+
+pub fn redraw_layers() {
+    unsafe {
+        if !LAYER_MANAGER.is_null() && !FRAME_BUFFER_WRITER.is_null() {
+            (*LAYER_MANAGER).draw(&*FRAME_BUFFER_WRITER);
+        }
+    }
+}
 
 // must wrap the attribute 'no_mangle' by unsafe(...)
 #[unsafe(no_mangle)] // don't mangle the name of this function
@@ -76,62 +88,7 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig, memory_map
     }
 }
 
-fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) -> ! {
-    segment::init_segment();
-    paging::setup_identify_page_table();
-
-    //compile_error!("メモリマップ実装してない(8.16)");
-    unsafe {
-        let memory_manager = &mut *addr_of_mut!(MEMORY_MANAGER);
-        let mut available_end = 0 as usize;
-        for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
-            let ptr = memory_map
-                .buffer
-                .add((i * memory_map.descriptor_size) as usize);
-            let desc: &MemoryDescriptor = &*(ptr as *const MemoryDescriptor);
-            if available_end < desc.physical_start as usize {
-                memory_manager.mark_allocated(
-                    FrameID {
-                        id: available_end as usize / BYTES_PER_FRAME,
-                    },
-                    (desc.physical_start as usize - available_end as usize) / BYTES_PER_FRAME,
-                );
-            }
-            let physical_end =
-                desc.physical_start as usize + desc.number_of_pages as usize * UEFI_PAGE_SIZE;
-            if desc.memory_type().is_available() {
-                available_end = physical_end;
-            } else {
-                memory_manager.mark_allocated(
-                    FrameID {
-                        id: desc.physical_start as usize / BYTES_PER_FRAME,
-                    },
-                    desc.number_of_pages as usize * UEFI_PAGE_SIZE / BYTES_PER_FRAME,
-                );
-            }
-        }
-        memory_manager.set_memory_range(
-            FrameID { id: 0 },
-            FrameID {
-                id: available_end / BYTES_PER_FRAME,
-            },
-        );
-    }
-    let pixel_writer: &PixelWriter = {
-        match frame_buffer_config.pixel_format {
-            kPixelRGBResv8BitPerColor => {
-                &PixelWriter::Rgb(Rgbpixelwriter::new(frame_buffer_config))
-            }
-            kPixelBGRResv8BitPerColor => {
-                &PixelWriter::Bgr(Bgrpixelwriter::new(frame_buffer_config))
-            }
-        }
-    };
-    init_idt();
-
-    let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
-    let frame_height: usize = frame_buffer_config.vertical_resolution as usize;
-
+fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height: usize) {
     fill_rectrange(
         pixel_writer,
         &Vector2D { x: 0, y: 0 },
@@ -141,8 +98,6 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         },
         &PixelColor { r: 255, g: 0, b: 0 },
     );
-    allocator::init_heap();
-
     fill_rectrange(
         pixel_writer,
         &Vector2D { x: 0, y: 0 },
@@ -195,19 +150,139 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             b: 160,
         },
     );
-    let mut console = Console::new(pixel_writer, DESKTOP_FGCOLOR, DESKTOP_BGCOLOR);
-    console.write_str("Welcome to tettya OS!!\n");
+}
+
+fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) -> ! {
+    segment::init_segment();
+    paging::setup_identify_page_table();
+
+    //compile_error!("メモリマップ実装してない(8.16)");
+    unsafe {
+        let memory_manager = &mut *addr_of_mut!(MEMORY_MANAGER);
+        let mut available_end = 0 as usize;
+        for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
+            let ptr = memory_map
+                .buffer
+                .add((i * memory_map.descriptor_size) as usize);
+            let desc: &MemoryDescriptor = &*(ptr as *const MemoryDescriptor);
+            if available_end < desc.physical_start as usize {
+                memory_manager.mark_allocated(
+                    FrameID {
+                        id: available_end as usize / BYTES_PER_FRAME,
+                    },
+                    (desc.physical_start as usize - available_end as usize) / BYTES_PER_FRAME,
+                );
+            }
+            let physical_end =
+                desc.physical_start as usize + desc.number_of_pages as usize * UEFI_PAGE_SIZE;
+            if desc.memory_type().is_available() {
+                available_end = physical_end;
+            } else {
+                memory_manager.mark_allocated(
+                    FrameID {
+                        id: desc.physical_start as usize / BYTES_PER_FRAME,
+                    },
+                    desc.number_of_pages as usize * UEFI_PAGE_SIZE / BYTES_PER_FRAME,
+                );
+            }
+        }
+        memory_manager.set_memory_range(
+            FrameID { id: 0 },
+            FrameID {
+                id: available_end / BYTES_PER_FRAME,
+            },
+        );
+    }
+
+    allocator::init_heap();
+
+    init_idt();
+
+    let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
+    let frame_height: usize = frame_buffer_config.vertical_resolution as usize;
+
+    let mut bg_window = Window::new(frame_width, frame_height);
+
+    let bg_writer = bg_window.writer();
+
+    draw_desktop(&bg_writer, frame_width, frame_height);
+
     // entrypoint
+
+    let bg_window = Rc::new(RefCell::new(bg_window));
+    let mouse_window = Rc::new(RefCell::new(Window::new(
+        kMouseCursorWidth,
+        kMouseCursorHeight,
+    )));
+
+    let mut layer_manager: LayerManager = LayerManager::new();
+    let bg_layer_id = layer_manager
+        .new_layer()
+        .set_window(bg_window.clone())
+        .move_to(Vector2D { x: 0, y: 0 })
+        .id;
+    let mouse_layer_id = layer_manager
+        .new_layer()
+        .set_window(mouse_window.clone())
+        .move_to(Vector2D { x: 200, y: 300 })
+        .id;
+
+    layer_manager.up_down(bg_layer_id, 0);
+    layer_manager.up_down(mouse_layer_id, 1);
+
+    let pixel_writer: &PixelWriter = {
+        match frame_buffer_config.pixel_format {
+            kPixelRGBResv8BitPerColor => {
+                &PixelWriter::Rgb(Rgbpixelwriter::new(frame_buffer_config))
+            }
+            kPixelBGRResv8BitPerColor => {
+                &PixelWriter::Bgr(Bgrpixelwriter::new(frame_buffer_config))
+            }
+        }
+    };
+    unsafe {
+        LAYER_MANAGER = &mut layer_manager;
+        FRAME_BUFFER_WRITER = pixel_writer;
+    }
+    layer_manager.draw(pixel_writer);
+
+    let mut console = Console::new(
+        ConsoleWriter::Window(bg_window.clone()),
+        DESKTOP_FGCOLOR,
+        DESKTOP_BGCOLOR,
+    );
+    console.set_redraw(redraw_layers);
+    let _ = console.write_str("Welcome to tettya OS!!\n");
 
     unsafe {
         let cursor = &mut *addr_of_mut!(MOUSE_CURSOR);
         cursor.init(
-            pixel_writer,
+            &mut layer_manager,
+            mouse_layer_id,
             Vector2D {
                 x: frame_width,
                 y: frame_height,
             },
+            redraw_layers,
         );
+        mouse_window
+            .borrow_mut()
+            .set_transparent_color(Some(crate::mousecursor::MOUSE_CURSOR_TRANSPARENT_COLOR));
+        {
+            let mut mouse_window_ref = mouse_window.borrow_mut();
+            let mouse_writer = mouse_window_ref.writer();
+            fill_rectrange(
+                &mouse_writer,
+                &Vector2D { x: 0, y: 0 },
+                &Vector2D {
+                    x: kMouseCursorWidth,
+                    y: kMouseCursorHeight,
+                },
+                &crate::mousecursor::MOUSE_CURSOR_TRANSPARENT_COLOR,
+            );
+            cursor.draw(&mouse_writer);
+        }
+        redraw_layers();
     }
 
     unsafe {
@@ -216,9 +291,9 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         usb_enumarate();
         asm!("sti");
     }
-    console.write_str("Success ScanAllBus\n");
+    let _ = console.write_str("Success ScanAllBus\n");
 
-    write!(console, "memory_map: {:p}\n", &memory_map);
+    let _ = write!(console, "memory_map: {:p}\n", &memory_map);
     for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
         let desc: &MemoryDescriptor = unsafe {
             let ptr = memory_map
@@ -227,7 +302,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             &*(ptr as *const MemoryDescriptor)
         };
         if desc.memory_type().is_available() {
-            write!(
+            let _ = write!(
                 console,
                 "type = {:?}, phys = {:08x} - {:08x}, pages = {}, attr = {:x}\n",
                 desc.memory_type(),
