@@ -3,6 +3,7 @@ use core::ptr::addr_of_mut;
 use crate::{
     graphics::{PixelColor, PixelDraw, Vector2D},
     layer::LayerManager,
+    printk, timer,
 };
 pub const kMouseCursorWidth: usize = 15;
 pub const kMouseCursorHeight: usize = 24;
@@ -87,6 +88,8 @@ impl MouseCursor {
         if self.position.y >= self.screen_size.y as i32 {
             self.position.y = self.screen_size.y as i32 - 1;
         }
+
+        timer::start_lapic_timer();
         if let Some(layer_manager) = self.layer_manager {
             unsafe {
                 (*layer_manager).move_layer(self.layer_id, self.position);
@@ -95,6 +98,10 @@ impl MouseCursor {
         if let Some(redraw) = self.redraw {
             redraw();
         }
+
+        let elapsed = timer::lapic_timer_elapsed();
+        timer::start_lapic_timer();
+        printk!("MouseObserver: elapsed = {}\n", elapsed);
     }
 
     pub fn draw<W: PixelDraw>(&self, writer: &W) {

@@ -14,15 +14,15 @@ mod mousecursor;
 mod paging;
 mod queue;
 mod segment;
+mod timer;
 mod window;
 extern crate alloc;
-use alloc::rc::Rc;
-
 use crate::console::{Console, ConsoleWriter};
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::frame_buffer_config::PixelFormat::{
     kPixelBGRResv8BitPerColor, kPixelRGBResv8BitPerColor,
 };
+use alloc::rc::Rc;
 
 use crate::console::printk;
 use crate::graphics::{
@@ -194,7 +194,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     }
 
     allocator::init_heap();
-
+    timer::initialize_lapic_timer();
     init_idt();
 
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
