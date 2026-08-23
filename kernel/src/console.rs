@@ -1,33 +1,40 @@
 use crate::font::{write_ascii, write_string};
 use crate::graphics::{PixelColor, PixelDraw, PixelWriter};
 use crate::window::Window;
+use alloc::boxed::Box;
 use alloc::rc::Rc;
 use core::cell::RefCell;
-use core::fmt;
+use core::fmt::{self, Arguments, Write};
 
-/*
-pub static mut CONSOLE: Option<Console<'static>> = None;
+static mut CONSOLE: *mut Console<'static> = core::ptr::null_mut();
 
-#[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => {
-        unsafe{
-            let _=write!(console,format_args!($($arg:tt)*));
+/// Initialize the kernel-wide console. Calls before initialization are discarded.
+pub fn init(console: Console<'static>) {
+    unsafe {
+        CONSOLE = Box::into_raw(Box::new(console));
+    }
+}
+
+/// Write formatted text from normal kernel context.
+pub fn printk(args: Arguments<'_>) {
+    unsafe {
+        let console = CONSOLE;
+        if !console.is_null() {
+            let _ = (&mut *console).write_fmt(args);
         }
-    };
+    }
 }
 
 #[macro_export]
-macro_rules! println {
+macro_rules! printk {
     () => {
-        print!("\n");
+        $crate::console::printk(core::format_args!("\n"));
     };
     ($($arg:tt)*) => {
-        crate::print!("{}\n",format_args!($($arg:tt)*));
+        $crate::console::printk(core::format_args!($($arg)*));
     };
 }
 
-    */
 pub enum ConsoleWriter<'a> {
     Pixel(&'a PixelWriter),
     Window(Rc<RefCell<Window>>),

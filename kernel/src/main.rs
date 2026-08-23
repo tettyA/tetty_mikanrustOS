@@ -24,6 +24,7 @@ use crate::frame_buffer_config::PixelFormat::{
     kPixelBGRResv8BitPerColor, kPixelRGBResv8BitPerColor,
 };
 
+use crate::console::printk;
 use crate::graphics::{
     Bgrpixelwriter, PixelColor, PixelDraw, PixelWriter, Rgbpixelwriter, Vector2D, draw_rectrange,
     fill_rectrange,
@@ -34,10 +35,8 @@ use crate::memory_manager::{BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_
 use crate::memory_map::{MemoryDescriptor, MemoryMap};
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
 use crate::window::Window;
-use core::cell::RefCell;
-use core::fmt::Write;
-
 use core::arch::asm;
+use core::cell::RefCell;
 use core::panic::PanicInfo;
 use core::ptr::addr_of_mut;
 
@@ -252,7 +251,8 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         DESKTOP_BGCOLOR,
     );
     console.set_redraw(redraw_layers);
-    let _ = console.write_str("Welcome to tettya OS!!\n");
+    console::init(console);
+    printk!("Welcome to tettya OS!!\n");
 
     unsafe {
         let cursor = &mut *addr_of_mut!(MOUSE_CURSOR);
@@ -291,9 +291,9 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         usb_enumarate();
         asm!("sti");
     }
-    let _ = console.write_str("Success ScanAllBus\n");
+    printk!("Success ScanAllBus\n");
 
-    let _ = write!(console, "memory_map: {:p}\n", &memory_map);
+    printk!("memory_map: {:p}\n", &memory_map);
     for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
         let desc: &MemoryDescriptor = unsafe {
             let ptr = memory_map
@@ -302,8 +302,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             &*(ptr as *const MemoryDescriptor)
         };
         if desc.memory_type().is_available() {
-            let _ = write!(
-                console,
+            printk!(
                 "type = {:?}, phys = {:08x} - {:08x}, pages = {}, attr = {:x}\n",
                 desc.memory_type(),
                 desc.physical_start,
