@@ -104,9 +104,9 @@ impl MouseCursor {
             redraw_area(old_position, self.position);
         }
 
-        let elapsed = timer::lapic_timer_elapsed();
+        /*  let elapsed = timer::lapic_timer_elapsed();
         timer::start_lapic_timer();
-        printk!("MouseObserver: elapsed = {}\n", elapsed);
+        printk!("MouseObserver: elapsed = {}\n", elapsed);*/
     }
 
     pub fn draw<W: PixelDraw>(&self, writer: &W) {
