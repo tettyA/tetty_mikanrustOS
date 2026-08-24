@@ -61,10 +61,18 @@ static KERNEL_STACK: KernelStack = KernelStack([0; 1024 * 1024]);
 static mut LAYER_MANAGER: *mut LayerManager = core::ptr::null_mut();
 static mut FRAME_BUFFER: *mut FrameBuffer = core::ptr::null_mut();
 
-pub fn redraw_layers() {
+pub fn redraw_layers_all() {
     unsafe {
         if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
-            (*LAYER_MANAGER).draw(&mut *FRAME_BUFFER);
+            (*LAYER_MANAGER).draw_all(&mut *FRAME_BUFFER);
+        }
+    }
+}
+
+pub fn redraw_layers_id(id: u32) {
+    unsafe {
+        if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
+            (*LAYER_MANAGER).draw_id(&mut *FRAME_BUFFER, id);
         }
     }
 }
@@ -245,6 +253,12 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     )));
     draw_window(&main_window.borrow_mut().writer(), "Hello window");
 
+    let console_window = Rc::new(RefCell::new(Window::new(
+        Console::COLUMN_NUM * 8,
+        Console::ROW_NUM * 16,
+        frame_buffer_config.pixel_format,
+    )));
+
     let mut layer_manager: LayerManager = LayerManager::new();
     let bg_layer_id = layer_manager
         .new_layer()
@@ -257,23 +271,46 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         .move_to(Vector2D { x: 200, y: 300 })
         .id;
     let main_window_id = layer_manager.new_layer().set_window(main_window.clone()).id;
+
+    let mut console = Console::new(
+        ConsoleWriter::Window(console_window.clone()),
+        DESKTOP_FGCOLOR,
+        DESKTOP_BGCOLOR,
+    );
+    {
+        let mut cw_ref = console_window.borrow_mut();
+        let cw_writer = cw_ref.writer();
+        fill_rectrange(
+            &cw_writer,
+            &Vector2D { x: 0, y: 0 },
+            &Vector2D {
+                x: Console::COLUMN_NUM * 8,
+                y: Console::ROW_NUM * 16,
+            },
+            &DESKTOP_BGCOLOR,
+        );
+    }
+    console.set_layerid(
+        layer_manager
+            .new_layer()
+            .set_window(console_window)
+            .move_to(Vector2D { x: 0, y: 0 })
+            .id,
+    );
+    console.set_redraw(redraw_layers_id);
     layer_manager.up_down(bg_layer_id, 0);
-    layer_manager.up_down(mouse_layer_id, 2);
-    layer_manager.up_down(main_window_id, 1);
+    layer_manager.up_down(mouse_layer_id, 3);
+    layer_manager.up_down(main_window_id, 2);
+    layer_manager.up_down(console.get_layer_id(), 1);
 
     unsafe {
         LAYER_MANAGER = &mut layer_manager;
         FRAME_BUFFER = &mut frame_buffer;
     }
-    layer_manager.draw(&mut frame_buffer);
+    layer_manager.draw_all(&mut frame_buffer);
 
-    let mut console = Console::new(
-        ConsoleWriter::Window(bg_window.clone()),
-        DESKTOP_FGCOLOR,
-        DESKTOP_BGCOLOR,
-    );
-    console.set_redraw(redraw_layers);
     console::init(console);
+
     printk!("Welcome to tettya OS!!\n");
 
     unsafe {
@@ -285,7 +322,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
                 x: frame_width,
                 y: frame_height,
             },
-            redraw_layers,
+            redraw_layers_all,
             redraw_mouse_area,
         );
         mouse_window
@@ -305,7 +342,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             );
             cursor.draw(&mouse_writer);
         }
-        redraw_layers();
+        redraw_layers_all();
     }
 
     unsafe {
@@ -363,7 +400,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
                 &PixelColor { r: 0, g: 0, b: 0 },
             );
             window_cnt += 1;
-            redraw_layers();
+            redraw_layers_id(main_window_id);
             asm!("cli");
             let q = &mut *addr_of_mut!(INTERRUPTMESSAGE_QUEUE);
 

@@ -71,7 +71,8 @@ pub struct Console<'a> {
     buffer: [[u8; 80]; 25 + 1],
     cursor_row: usize,
     cursor_column: usize,
-    redraw: Option<fn()>,
+    redraw: Option<fn(u32)>,
+    layer_id: u32,
 }
 
 impl<'a> fmt::Write for Console<'a> {
@@ -82,8 +83,8 @@ impl<'a> fmt::Write for Console<'a> {
 }
 
 impl<'a> Console<'a> {
-    const ROW_NUM: usize = 25;
-    const COLUMN_NUM: usize = 80;
+    pub const ROW_NUM: usize = 25;
+    pub const COLUMN_NUM: usize = 80;
     pub fn new(writer: ConsoleWriter<'a>, fg_color: PixelColor, bg_color: PixelColor) -> Self {
         Self {
             writer,
@@ -93,15 +94,22 @@ impl<'a> Console<'a> {
             cursor_row: 0,
             cursor_column: 0,
             redraw: None,
+            layer_id: 0,
         }
     }
     pub fn set_writer(&mut self, writer: ConsoleWriter<'a>) {
         self.writer = writer;
     }
-    pub fn set_redraw(&mut self, redraw: fn()) {
+    pub fn set_redraw(&mut self, redraw: fn(u32)) {
         self.redraw = Some(redraw);
     }
-    fn refresh(&self) {
+    pub fn set_layerid(&mut self, id: u32) {
+        self.layer_id = id;
+    }
+    pub fn get_layer_id(&self) -> u32 {
+        self.layer_id
+    }
+    pub fn refresh(&self) {
         for r in 0..Self::ROW_NUM {
             write_string(
                 &self.writer,
@@ -129,7 +137,7 @@ impl<'a> Console<'a> {
             }
         }
         if let Some(redraw) = self.redraw {
-            redraw();
+            redraw(self.layer_id);
         }
     }
     fn new_line(&mut self) {

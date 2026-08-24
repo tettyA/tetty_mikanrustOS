@@ -107,7 +107,7 @@ impl LayerManager {
         self.up_down(id, new_z);
     }
 
-    pub fn draw(&self, frame_buffer: &mut FrameBuffer) {
+    pub fn draw_all(&self, frame_buffer: &mut FrameBuffer) {
         for &l in &self.layer_stack {
             unsafe {
                 let layer = &*l;
@@ -137,6 +137,38 @@ impl LayerManager {
                         },
                         area,
                     );
+                }
+            }
+        }
+    }
+
+    pub fn draw_id(&mut self, frame_buffer: &mut FrameBuffer, id: u32) {
+        let mut draw = false;
+        let mut window_area = Rectrange {
+            pos_lu: Vector2D { x: 0, y: 0 },
+            size: Vector2D { x: 0, y: 0 },
+        };
+        for &l in &self.layer_stack {
+            unsafe {
+                let layer = &*l;
+                if layer.id == id {
+                    window_area.size = Vector2D {
+                        x: layer.window.as_ref().unwrap().borrow().width() as i32,
+                        y: layer.window.as_ref().unwrap().borrow().height() as i32,
+                    };
+                    draw = true;
+                }
+                if draw {
+                    if let Some(window) = &layer.window {
+                        window.borrow().draw_to_area(
+                            frame_buffer,
+                            Vector2D {
+                                x: layer.pos.x.max(0),
+                                y: layer.pos.y.max(0),
+                            },
+                            window_area,
+                        );
+                    }
                 }
             }
         }
