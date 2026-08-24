@@ -1,5 +1,5 @@
 use crate::font::{write_ascii, write_string};
-use crate::graphics::{PixelColor, PixelDraw, PixelWriter};
+use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D};
 use crate::window::Window;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -122,23 +122,56 @@ impl<'a> Console<'a> {
         self.cursor_column = 0;
         if self.cursor_row < Self::ROW_NUM - 1 {
             self.cursor_row += 1;
-        } else {
-            for y in 0..16 * Self::ROW_NUM {
-                for x in 0..8 * Self::COLUMN_NUM {
-                    self.writer.write(x, y, &self.bg_color);
+            return;
+        }
+
+        match &self.writer {
+            ConsoleWriter::Pixel(_) => {
+                for y in 0..16 * Self::ROW_NUM {
+                    for x in 0..8 * Self::COLUMN_NUM {
+                        self.writer.write(x, y, &self.bg_color);
+                    }
                 }
+                for y in 0..(Self::ROW_NUM - 1) {
+                    self.buffer[y] = self.buffer[y + 1];
+                    write_string(
+                        &self.writer,
+                        0,
+                        16 * y,
+                        &(core::str::from_utf8(&self.buffer[y]).unwrap()),
+                        &self.fg_color,
+                    );
+                }
+                self.buffer[Self::ROW_NUM - 1] = [0; Self::COLUMN_NUM];
             }
-            for y in 0..(Self::ROW_NUM - 1) {
-                self.buffer[y] = self.buffer[y + 1];
-                write_string(
-                    &self.writer,
-                    0,
-                    16 * y,
-                    &(core::str::from_utf8(&self.buffer[y]).unwrap()),
-                    &self.fg_color,
+            ConsoleWriter::Window(ref_cell) => {
+                for row in 0..Self::ROW_NUM - 1 {
+                    self.buffer[row] = self.buffer[row + 1];
+                }
+                self.buffer[Self::ROW_NUM - 1] = [0; Self::COLUMN_NUM];
+
+                let mut window = ref_cell.borrow_mut();
+
+                let move_src = Rectrange {
+                    pos_lu: Vector2D { x: 0, y: 16 },
+                    size: Vector2D {
+                        x: 8 * Self::COLUMN_NUM as i32,
+                        y: 16 * (Self::ROW_NUM - 1) as i32,
+                    },
+                };
+                window.window_move(Vector2D { x: 0, y: 0 }, &move_src);
+                window.fill_rect(
+                    Vector2D {
+                        x: 0,
+                        y: 16 * (Self::ROW_NUM - 1),
+                    },
+                    Vector2D {
+                        x: 8 * Self::COLUMN_NUM,
+                        y: 16,
+                    },
+                    self.bg_color,
                 );
             }
-            self.buffer[Self::ROW_NUM - 1] = [0; Self::COLUMN_NUM];
-        }
+        };
     }
 }

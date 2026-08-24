@@ -118,7 +118,7 @@ pub fn draw_rectrange<T, W: PixelDraw>(
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq)]
 pub struct Vector2D<T> {
     pub x: T,
     pub y: T,
@@ -151,4 +151,10 @@ pub struct PixelColor {
     pub r: u8,
     pub g: u8,
     pub b: u8,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Rectrange<T> {
+    pub pos_lu: Vector2D<T>,
+    pub size: Vector2D<T>,
 }

@@ -43,6 +43,7 @@ pub struct MouseCursor {
     layer_manager: Option<*mut LayerManager>,
     layer_id: u32,
     redraw: Option<fn()>,
+    redraw_area: Option<fn(Vector2D<i32>, Vector2D<i32>)>,
     position: Vector2D<i32>,
     screen_size: Vector2D<usize>,
 }
@@ -53,6 +54,7 @@ impl MouseCursor {
             layer_manager: None,
             layer_id: 0,
             redraw: None,
+            redraw_area: None,
             position: Vector2D { x: 200, y: 300 },
             screen_size: Vector2D { x: 100, y: 100 },
         }
@@ -63,11 +65,13 @@ impl MouseCursor {
         layer_id: u32,
         screen_size: Vector2D<usize>,
         redraw: fn(),
+        redraw_area: fn(Vector2D<i32>, Vector2D<i32>),
     ) {
         self.layer_manager = Some(layer_manager);
         self.layer_id = layer_id;
         self.screen_size = screen_size;
         self.redraw = Some(redraw);
+        self.redraw_area = Some(redraw_area);
     }
 
     pub unsafe fn move_relative(&mut self, displacement: Vector2D<i32>) {
@@ -75,6 +79,7 @@ impl MouseCursor {
             return;
         }
 
+        let old_position = self.position;
         self.position += displacement;
         if self.position.x < 0 {
             self.position.x = 0;
@@ -95,8 +100,8 @@ impl MouseCursor {
                 (*layer_manager).move_layer(self.layer_id, self.position);
             }
         }
-        if let Some(redraw) = self.redraw {
-            redraw();
+        if let Some(redraw_area) = self.redraw_area {
+            redraw_area(old_position, self.position);
         }
 
         let elapsed = timer::lapic_timer_elapsed();

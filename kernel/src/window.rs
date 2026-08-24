@@ -4,7 +4,7 @@ use core::marker::PhantomData;
 use crate::{
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{PixelColor, PixelDraw, Vector2D},
+    graphics::{PixelColor, PixelDraw, Rectrange, Vector2D},
 };
 
 /// the region of graphics drawing.
@@ -32,11 +32,25 @@ impl Window {
             transparent_color: None,
         }
     }
-
+    pub fn window_move(&mut self, dst_pos: Vector2D<i32>, src: &Rectrange<i32>) {
+        self.shadow_buffer.r#move(dst_pos, src);
+    }
     pub fn write(&mut self, x: usize, y: usize, c: PixelColor) {
         if x < self.width && y < self.height {
             self.data[y][x] = c;
             self.shadow_buffer.writer().write(x, y, &c);
+        }
+    }
+
+    pub fn fill_rect(&mut self, pos: Vector2D<usize>, size: Vector2D<usize>, c: PixelColor) {
+        let end_x = (pos.x + size.x).min(self.width);
+        let end_y = (pos.y + size.y).min(self.height);
+        let shadow_writer = self.shadow_buffer.writer();
+        for y in pos.y..end_y {
+            for x in pos.x..end_x {
+                self.data[y][x] = c;
+                shadow_writer.write(x, y, &c);
+            }
         }
     }
 
@@ -63,6 +77,28 @@ impl Window {
             }
         } else {
             dst.copy(pos, &self.shadow_buffer);
+        }
+    }
+
+    pub fn draw_to_area(&self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: Rectrange<i32>) {
+        let start_x = area.pos_lu.x.max(pos.x).max(0);
+        let start_y = area.pos_lu.y.max(pos.y).max(0);
+        let end_x = (area.pos_lu.x + area.size.x).min(pos.x + self.width as i32);
+        let end_y = (area.pos_lu.y + area.size.y).min(pos.y + self.height as i32);
+        if start_x >= end_x || start_y >= end_y {
+            return;
+        }
+
+        let writer = dst.writer();
+        for y in start_y..end_y {
+            for x in start_x..end_x {
+                let local_x = (x - pos.x) as usize;
+                let local_y = (y - pos.y) as usize;
+                if self.transparent_color == Some(self.data[local_y][local_x]) {
+                    continue;
+                }
+                writer.write(x as usize, y as usize, &self.data[local_y][local_x]);
+            }
         }
     }
 

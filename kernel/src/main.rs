@@ -24,7 +24,7 @@ use crate::frame_buffer_config::FrameBufferConfig;
 use alloc::rc::Rc;
 
 use crate::console::printk;
-use crate::graphics::{PixelColor, PixelDraw, Vector2D, draw_rectrange, fill_rectrange};
+use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D, draw_rectrange, fill_rectrange};
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::layer::LayerManager;
 use crate::memory_manager::{BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE};
@@ -61,6 +61,29 @@ pub fn redraw_layers() {
     unsafe {
         if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
             (*LAYER_MANAGER).draw(&mut *FRAME_BUFFER);
+        }
+    }
+}
+
+pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
+    unsafe {
+        if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
+            let left = old_pos.x.min(new_pos.x);
+            let top = old_pos.y.min(new_pos.y);
+            let right = (old_pos.x + kMouseCursorWidth as i32)
+                .max(new_pos.x + kMouseCursorWidth as i32);
+            let bottom = (old_pos.y + kMouseCursorHeight as i32)
+                .max(new_pos.y + kMouseCursorHeight as i32);
+            (*LAYER_MANAGER).draw_area(
+                &mut *FRAME_BUFFER,
+                Rectrange {
+                    pos_lu: Vector2D { x: left, y: top },
+                    size: Vector2D {
+                        x: right - left,
+                        y: bottom - top,
+                    },
+                },
+            );
         }
     }
 }
@@ -252,6 +275,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
                 y: frame_height,
             },
             redraw_layers,
+            redraw_mouse_area,
         );
         mouse_window
             .borrow_mut()

@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use crate::{
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{PixelColor, PixelDraw, Vector2D},
+    graphics::{PixelColor, PixelDraw, Rectrange, Vector2D},
 };
 
 pub struct FrameBuffer {
@@ -92,6 +92,43 @@ impl FrameBuffer {
             );
         }
     }
+    pub fn r#move(&mut self, dst_pos: Vector2D<i32>, src: &Rectrange<i32>) {
+        let bytes_per_pixel = bytes_per_pixel(&self.config.pixel_format) as usize;
+        let bytes_per_scan_line = bytes_per_scan_line(&self.config) as usize;
+        let width = src.size.x as usize;
+        let height = src.size.y as usize;
+        let dst_x = dst_pos.x as usize;
+        let dst_y = dst_pos.y as usize;
+        let src_x = src.pos_lu.x as usize;
+        let src_y = src.pos_lu.y as usize;
+        let line_bytes = width * bytes_per_pixel;
+        let horizontal_resolution = self.config.horizontal_resolution as usize;
+        let buffer = self.get_slice_mut();
+
+        if src_x == dst_x && width == horizontal_resolution {
+            let src_offset = src_y * bytes_per_scan_line + src_x * bytes_per_pixel;
+            let dst_offset = dst_y * bytes_per_scan_line + dst_x * bytes_per_pixel;
+            buffer.copy_within(
+                src_offset..src_offset + height * bytes_per_scan_line,
+                dst_offset,
+            );
+            return;
+        }
+
+        if dst_pos.y < src.pos_lu.y {
+            for row in 0..height {
+                let src_offset = (src_y + row) * bytes_per_scan_line + src_x * bytes_per_pixel;
+                let dst_offset = (dst_y + row) * bytes_per_scan_line + dst_x * bytes_per_pixel;
+                buffer.copy_within(src_offset..src_offset + line_bytes, dst_offset);
+            }
+        } else {
+            for row in (0..height).rev() {
+                let src_offset = (src_y + row) * bytes_per_scan_line + src_x * bytes_per_pixel;
+                let dst_offset = (dst_y + row) * bytes_per_scan_line + dst_x * bytes_per_pixel;
+                buffer.copy_within(src_offset..src_offset + line_bytes, dst_offset);
+            }
+        }
+    }
 
     pub fn draw_to<W: PixelDraw>(&self, writer: &W, pos: Vector2D<i32>) {
         let bytes_per_pixel = 4;
@@ -108,8 +145,7 @@ impl FrameBuffer {
                     continue;
                 }
 
-                let offset = (y * self.config.pixels_per_scan_line as usize + x)
-                    * bytes_per_pixel;
+                let offset = (y * self.config.pixels_per_scan_line as usize + x) * bytes_per_pixel;
                 let c = match self.config.pixel_format {
                     PixelFormat::kPixelRGBResv8BitPerColor => PixelColor {
                         r: slice[offset],
@@ -132,6 +168,32 @@ impl FrameBuffer {
             frame_buffer: self,
             _marker: PhantomData,
         }
+    }
+}
+
+fn bytes_per_pixel(format: &PixelFormat) -> i32 {
+    match format {
+        PixelFormat::kPixelRGBResv8BitPerColor => 4,
+        PixelFormat::kPixelBGRResv8BitPerColor => 4,
+    }
+}
+fn frame_addr_at(pos: Vector2D<i32>, config: &FrameBufferConfig) -> *mut u8 {
+    unsafe {
+        config.frame_buffer.add(
+            (bytes_per_pixel(&config.pixel_format)
+                * (config.pixels_per_scan_line as i32 * pos.y + pos.x)) as usize,
+        )
+    }
+}
+
+fn bytes_per_scan_line(config: &FrameBufferConfig) -> i32 {
+    bytes_per_pixel(&config.pixel_format) * config.pixels_per_scan_line as i32
+}
+
+fn frame_buffer_size(config: &FrameBufferConfig) -> Vector2D<i32> {
+    Vector2D {
+        x: config.horizontal_resolution as i32,
+        y: config.vertical_resolution as i32,
     }
 }
 

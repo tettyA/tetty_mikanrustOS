@@ -2,7 +2,11 @@ use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 
-use crate::{frame_buffer::FrameBuffer, graphics::Vector2D, window::Window};
+use crate::{
+    frame_buffer::FrameBuffer,
+    graphics::{Rectrange, Vector2D},
+    window::Window,
+};
 
 pub struct Layer {
     pub id: u32,
@@ -114,6 +118,24 @@ impl LayerManager {
                             x: layer.pos.x.max(0),
                             y: layer.pos.y.max(0),
                         },
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn draw_area(&self, frame_buffer: &mut FrameBuffer, area: Rectrange<i32>) {
+        for &l in &self.layer_stack {
+            unsafe {
+                let layer = &*l;
+                if let Some(window) = &layer.window {
+                    window.borrow().draw_to_area(
+                        frame_buffer,
+                        Vector2D {
+                            x: layer.pos.x.max(0),
+                            y: layer.pos.y.max(0),
+                        },
+                        area,
                     );
                 }
             }
