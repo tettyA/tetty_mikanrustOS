@@ -2,10 +2,79 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use crate::{
+    font::write_string,
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{PixelColor, PixelDraw, Rectrange, Vector2D},
+    graphics::{PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D, fill_rectrange},
 };
+
+const kCloseButtonWidth: usize = 16;
+const kCloseButtonHeight: usize = 14;
+const WINDOW_CLOSE_BUTTON: [&'static str; kCloseButtonHeight] = [
+    "...............@",
+    ".:::::::::::::$@",
+    ".:::::::::::::$@",
+    ".:::@@::::@@::$@",
+    ".::::@@::@@:::$@",
+    ".:::::@@@@::::$@",
+    ".::::::@@:::::$@",
+    ".:::::@@@@::::$@",
+    ".::::@@::@@:::$@",
+    ".:::@@::::@@::$@",
+    ".:::::::::::::$@",
+    ".:::::::::::::$@",
+    ".$$$$$$$$$$$$$$@",
+    "@@@@@@@@@@@@@@@@",
+];
+
+const fn to_color(c: u32) -> PixelColor {
+    PixelColor {
+        r: ((c >> 16) & 0xff) as u8,
+        g: ((c >> 8) & 0xff) as u8,
+        b: (c & 0xff) as u8,
+    }
+}
+pub fn draw_window<T: PixelDraw>(writer: &T, title: &str) {
+    let fill_rect = |posx: usize, posy: usize, sizew: usize, sizeh: usize, c: u32| {
+        fill_rectrange(
+            writer,
+            &Vector2D { x: posx, y: posy },
+            &Vector2D { x: sizew, y: sizeh },
+            &to_color(c),
+        );
+    };
+
+    let win_w = writer.width();
+    let win_h = writer.height();
+
+    fill_rect(0, 0, win_w, 1, 0xc6c6c6);
+    fill_rect(1, 1, win_w - 2, 1, 0xffffff);
+    fill_rect(0, 0, 1, win_h, 0xc6c6c6);
+    fill_rect(1, 1, 1, win_h - 2, 0xffffff);
+    fill_rect(win_w - 2, 1, 1, win_h - 2, 0x848484);
+    fill_rect(win_w - 1, 0, 1, win_h, 0x000000);
+    fill_rect(2, 2, win_w - 4, win_h - 4, 0xc6c6c6);
+    fill_rect(3, 3, win_w - 4, 18, 0x000084);
+    fill_rect(1, win_h - 2, win_w - 2, 1, 0x848484);
+    fill_rect(0, win_h - 1, win_w, 1, 0x000000);
+
+    write_string(writer, 24, 4, title, &to_color(0xffffff));
+
+    for (y, s) in WINDOW_CLOSE_BUTTON.iter().enumerate() {
+        for (x, c) in s.chars().enumerate() {
+            let col = if c == '@' {
+                to_color(0x000000)
+            } else if c == '$' {
+                to_color(0x848484)
+            } else if c == ':' {
+                to_color(0xc6c6c6)
+            } else {
+                to_color(0x000000)
+            };
+            writer.write(win_w - 5 - kCloseButtonWidth + x, 5 + y, &col);
+        }
+    }
+}
 
 /// the region of graphics drawing.
 /// Manage not only Window with title or menu, and also the visual region such as MouseCursor's region and on.
@@ -143,5 +212,13 @@ impl<'a> PixelDraw for WindowWriter<'a> {
         unsafe {
             (*self.window).write(x, y, *c);
         }
+    }
+
+    fn width(&self) -> usize {
+        unsafe { (*self.window).width }
+    }
+
+    fn height(&self) -> usize {
+        unsafe { (*self.window).height }
     }
 }

@@ -230,4 +230,12 @@ impl<'a> PixelDraw for FrameBufferWriter<'a> {
             }
         }
     }
+
+    fn width(&self) -> usize {
+        unsafe { (&mut *self.frame_buffer).config.horizontal_resolution as usize }
+    }
+
+    fn height(&self) -> usize {
+        unsafe { (&mut *self.frame_buffer).config.vertical_resolution as usize }
+    }
 }

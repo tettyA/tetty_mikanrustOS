@@ -4,6 +4,8 @@ use core::ptr;
 
 pub trait PixelDraw {
     fn write(&self, x: usize, y: usize, c: &PixelColor);
+    fn width(&self) -> usize;
+    fn height(&self) -> usize;
 }
 
 pub enum PixelWriter {
@@ -20,6 +22,20 @@ impl PixelDraw for PixelWriter {
         match self {
             PixelWriter::Bgr(writer) => writer.write(x, y, c),
             PixelWriter::Rgb(writer) => writer.write(x, y, c),
+        }
+    }
+
+    fn width(&self) -> usize {
+        match self {
+            PixelWriter::Bgr(writer) => writer.horizontal_resolution,
+            PixelWriter::Rgb(writer) => writer.horizontal_resolution,
+        }
+    }
+
+    fn height(&self) -> usize {
+        match self {
+            PixelWriter::Bgr(writer) => writer.vertical_resolution,
+            PixelWriter::Rgb(writer) => writer.vertical_resolution,
         }
     }
 }

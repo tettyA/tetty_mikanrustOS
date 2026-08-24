@@ -19,18 +19,21 @@ mod timer;
 mod window;
 extern crate alloc;
 use crate::console::{Console, ConsoleWriter};
+use crate::font::write_string;
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
 use alloc::rc::Rc;
 
 use crate::console::printk;
-use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D, draw_rectrange, fill_rectrange};
+use crate::graphics::{
+    PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D, draw_rectrange, fill_rectrange,
+};
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::layer::LayerManager;
 use crate::memory_manager::{BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE};
 use crate::memory_map::{MemoryDescriptor, MemoryMap};
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
-use crate::window::Window;
+use crate::window::{Window, draw_window};
 use core::arch::asm;
 use core::cell::RefCell;
 use core::panic::PanicInfo;
@@ -70,10 +73,10 @@ pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
         if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
             let left = old_pos.x.min(new_pos.x);
             let top = old_pos.y.min(new_pos.y);
-            let right = (old_pos.x + kMouseCursorWidth as i32)
-                .max(new_pos.x + kMouseCursorWidth as i32);
-            let bottom = (old_pos.y + kMouseCursorHeight as i32)
-                .max(new_pos.y + kMouseCursorHeight as i32);
+            let right =
+                (old_pos.x + kMouseCursorWidth as i32).max(new_pos.x + kMouseCursorWidth as i32);
+            let bottom =
+                (old_pos.y + kMouseCursorHeight as i32).max(new_pos.y + kMouseCursorHeight as i32);
             (*LAYER_MANAGER).draw_area(
                 &mut *FRAME_BUFFER,
                 Rectrange {
@@ -234,6 +237,26 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         kMouseCursorHeight,
         frame_buffer_config.pixel_format,
     )));
+    let main_window = Rc::new(RefCell::new(Window::new(
+        160,
+        68,
+        frame_buffer_config.pixel_format,
+    )));
+    draw_window(&main_window.borrow_mut().writer(), "Hello window");
+    write_string(
+        &main_window.borrow_mut().writer(),
+        24,
+        28,
+        "Weocome to",
+        &PixelColor { r: 0, g: 0, b: 0 },
+    );
+    write_string(
+        &main_window.borrow_mut().writer(),
+        24,
+        44,
+        "tettaOS world^^",
+        &PixelColor { r: 255, g: 0, b: 0 },
+    );
 
     let mut layer_manager: LayerManager = LayerManager::new();
     let bg_layer_id = layer_manager
@@ -246,9 +269,10 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         .set_window(mouse_window.clone())
         .move_to(Vector2D { x: 200, y: 300 })
         .id;
-
+    let main_window_id = layer_manager.new_layer().set_window(main_window).id;
     layer_manager.up_down(bg_layer_id, 0);
-    layer_manager.up_down(mouse_layer_id, 1);
+    layer_manager.up_down(mouse_layer_id, 2);
+    layer_manager.up_down(main_window_id, 1);
 
     unsafe {
         LAYER_MANAGER = &mut layer_manager;

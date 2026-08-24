@@ -47,6 +47,20 @@ impl PixelDraw for ConsoleWriter<'_> {
             Self::Window(window) => window.borrow_mut().write(x, y, *c),
         }
     }
+
+    fn width(&self) -> usize {
+        match self {
+            Self::Pixel(writer) => writer.width(),
+            Self::Window(window) => window.borrow_mut().width(),
+        }
+    }
+
+    fn height(&self) -> usize {
+        match self {
+            Self::Pixel(writer) => writer.height(),
+            Self::Window(window) => window.borrow_mut().height(),
+        }
+    }
 }
 
 pub struct Console<'a> {
