@@ -22,6 +22,7 @@ use crate::console::{Console, ConsoleWriter};
 use crate::font::write_string;
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
+use alloc::format;
 use alloc::rc::Rc;
 
 use crate::console::printk;
@@ -239,24 +240,10 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     )));
     let main_window = Rc::new(RefCell::new(Window::new(
         160,
-        68,
+        52,
         frame_buffer_config.pixel_format,
     )));
     draw_window(&main_window.borrow_mut().writer(), "Hello window");
-    write_string(
-        &main_window.borrow_mut().writer(),
-        24,
-        28,
-        "Weocome to",
-        &PixelColor { r: 0, g: 0, b: 0 },
-    );
-    write_string(
-        &main_window.borrow_mut().writer(),
-        24,
-        44,
-        "tettaOS world^^",
-        &PixelColor { r: 255, g: 0, b: 0 },
-    );
 
     let mut layer_manager: LayerManager = LayerManager::new();
     let bg_layer_id = layer_manager
@@ -269,7 +256,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         .set_window(mouse_window.clone())
         .move_to(Vector2D { x: 200, y: 300 })
         .id;
-    let main_window_id = layer_manager.new_layer().set_window(main_window).id;
+    let main_window_id = layer_manager.new_layer().set_window(main_window.clone()).id;
     layer_manager.up_down(bg_layer_id, 0);
     layer_manager.up_down(mouse_layer_id, 2);
     layer_manager.up_down(main_window_id, 1);
@@ -348,9 +335,35 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             );
         }
     }
-
+    let mut window_cnt = 0;
     loop {
         unsafe {
+            // compile_error!("osbook_day10c 途中 タイマ表示したい。");
+            fill_rectrange(
+                &main_window.borrow_mut().writer(),
+                &Vector2D {
+                    x: 24 as usize,
+                    y: 28 as usize,
+                },
+                &Vector2D {
+                    x: 8 * 10 as usize,
+                    y: 16 as usize,
+                },
+                &PixelColor {
+                    r: 0xc6,
+                    g: 0xc6,
+                    b: 0xc6,
+                },
+            );
+            write_string(
+                &main_window.borrow_mut().writer(),
+                24,
+                28,
+                &format!("{window_cnt}"),
+                &PixelColor { r: 0, g: 0, b: 0 },
+            );
+            window_cnt += 1;
+            redraw_layers();
             asm!("cli");
             let q = &mut *addr_of_mut!(INTERRUPTMESSAGE_QUEUE);
 
@@ -364,7 +377,8 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
                     }
                 }
             } else {
-                asm!("sti\n\thlt");
+                // asm!("sti\n\thlt");
+                asm!("sti");
                 continue;
             }
         }
