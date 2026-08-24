@@ -6,7 +6,7 @@ ORIGINAL_DIR=$(pwd)
 cd $HOME/edk2
 source edksetup.sh
 
-unlink MikanLoaderPkg
+[ -L MikanLoaderPkg ] && unlink MikanLoaderPkg
 ln -s $ORIGINAL_DIR/MikanLoaderPkg ./
 rm -rf Build/MikanLoaderX64
 

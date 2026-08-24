@@ -19,17 +19,12 @@ mod timer;
 mod window;
 extern crate alloc;
 use crate::console::{Console, ConsoleWriter};
+use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
-use crate::frame_buffer_config::PixelFormat::{
-    kPixelBGRResv8BitPerColor, kPixelRGBResv8BitPerColor,
-};
 use alloc::rc::Rc;
 
 use crate::console::printk;
-use crate::graphics::{
-    Bgrpixelwriter, PixelColor, PixelDraw, PixelWriter, Rgbpixelwriter, Vector2D, draw_rectrange,
-    fill_rectrange,
-};
+use crate::graphics::{PixelColor, PixelDraw, Vector2D, draw_rectrange, fill_rectrange};
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::layer::LayerManager;
 use crate::memory_manager::{BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE};
@@ -60,12 +55,12 @@ struct KernelStack([u8; 1024 * 1024]);
 // exclusive stack for kernel
 static KERNEL_STACK: KernelStack = KernelStack([0; 1024 * 1024]);
 static mut LAYER_MANAGER: *mut LayerManager = core::ptr::null_mut();
-static mut FRAME_BUFFER_WRITER: *const PixelWriter = core::ptr::null();
+static mut FRAME_BUFFER: *mut FrameBuffer = core::ptr::null_mut();
 
 pub fn redraw_layers() {
     unsafe {
-        if !LAYER_MANAGER.is_null() && !FRAME_BUFFER_WRITER.is_null() {
-            (*LAYER_MANAGER).draw(&*FRAME_BUFFER_WRITER);
+        if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
+            (*LAYER_MANAGER).draw(&mut *FRAME_BUFFER);
         }
     }
 }
@@ -200,6 +195,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
 
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
     let frame_height: usize = frame_buffer_config.vertical_resolution as usize;
+    let mut frame_buffer = FrameBuffer::new(*frame_buffer_config);
 
     let mut bg_window = Window::new(frame_width, frame_height, frame_buffer_config.pixel_format);
 
@@ -231,21 +227,11 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     layer_manager.up_down(bg_layer_id, 0);
     layer_manager.up_down(mouse_layer_id, 1);
 
-    let pixel_writer: &PixelWriter = {
-        match frame_buffer_config.pixel_format {
-            kPixelRGBResv8BitPerColor => {
-                &PixelWriter::Rgb(Rgbpixelwriter::new(frame_buffer_config))
-            }
-            kPixelBGRResv8BitPerColor => {
-                &PixelWriter::Bgr(Bgrpixelwriter::new(frame_buffer_config))
-            }
-        }
-    };
     unsafe {
         LAYER_MANAGER = &mut layer_manager;
-        FRAME_BUFFER_WRITER = pixel_writer;
+        FRAME_BUFFER = &mut frame_buffer;
     }
-    layer_manager.draw(pixel_writer);
+    layer_manager.draw(&mut frame_buffer);
 
     let mut console = Console::new(
         ConsoleWriter::Window(bg_window.clone()),

@@ -45,8 +45,9 @@ impl Window {
     /// `writer`: Writer  
     ///
     /// `pos` : Left-up x-y position
-    pub fn draw_to<W: PixelDraw>(&self, dst: &W, pos: Vector2D<i32>) {
+    pub fn draw_to(&self, dst: &mut FrameBuffer, pos: Vector2D<i32>) {
         if let Some(tc) = self.transparent_color {
+            let dst_writer = dst.writer();
             for y in 0..self.height {
                 for x in 0..self.width {
                     if tc == self.data[y][x] {
@@ -56,12 +57,12 @@ impl Window {
                     let dst_y = pos.y + y as i32;
                     let c = self.data[y][x];
                     if dst_x >= 0 && dst_y >= 0 {
-                        dst.write(dst_x as usize, dst_y as usize, &c);
+                        dst_writer.write(dst_x as usize, dst_y as usize, &c);
                     }
                 }
             }
         } else {
-            self.shadow_buffer.draw_to(dst, pos);
+            dst.copy(pos, &self.shadow_buffer);
         }
     }
 

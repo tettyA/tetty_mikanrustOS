@@ -2,10 +2,7 @@ use core::cell::RefCell;
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 
-use crate::{
-    graphics::{PixelWriter, Vector2D},
-    window::Window,
-};
+use crate::{frame_buffer::FrameBuffer, graphics::Vector2D, window::Window};
 
 pub struct Layer {
     pub id: u32,
@@ -36,10 +33,10 @@ impl Layer {
         self.pos += pos_diff;
         self
     }
-    pub fn draw_to(&self, writer: &PixelWriter) {
+    pub fn draw_to(&self, frame_buffer: &mut FrameBuffer) {
         if let Some(window) = &self.window {
             window.borrow().draw_to(
-                writer,
+                frame_buffer,
                 Vector2D {
                     x: self.pos.x.max(0),
                     y: self.pos.y.max(0),
@@ -106,13 +103,13 @@ impl LayerManager {
         self.up_down(id, new_z);
     }
 
-    pub fn draw(&self, writer: &PixelWriter) {
+    pub fn draw(&self, frame_buffer: &mut FrameBuffer) {
         for &l in &self.layer_stack {
             unsafe {
                 let layer = &*l;
                 if let Some(window) = &layer.window {
                     window.borrow().draw_to(
-                        writer,
+                        frame_buffer,
                         Vector2D {
                             x: layer.pos.x.max(0),
                             y: layer.pos.y.max(0),
