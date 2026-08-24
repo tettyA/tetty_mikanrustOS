@@ -110,13 +110,12 @@ impl LayerManager {
     }
 
     pub fn draw_all(&self) {
-        //, frame_buffer: &mut FrameBuffer) {
         for &l in &self.layer_stack {
             unsafe {
                 let layer = &*l;
                 if let Some(window) = &layer.window {
                     window.borrow().draw_to(
-                        &mut *self.screen, //frame_buffer,
+                        &mut *self.screen,
                         Vector2D {
                             x: layer.pos.x.max(0),
                             y: layer.pos.y.max(0),
@@ -127,13 +126,13 @@ impl LayerManager {
         }
     }
 
-    pub fn draw_area(&self /* , frame_buffer: &mut FrameBuffer*/, area: Rectrange<i32>) {
+    pub fn draw_area(&self, area: Rectrange<i32>) {
         for &l in &self.layer_stack {
             unsafe {
                 let layer = &*l;
                 if let Some(window) = &layer.window {
                     window.borrow().draw_to_area(
-                        &mut *self.screen, //  frame_buffer,
+                        &mut *self.screen,
                         Vector2D {
                             x: layer.pos.x.max(0),
                             y: layer.pos.y.max(0),
@@ -145,7 +144,7 @@ impl LayerManager {
         }
     }
 
-    pub fn draw_id(&mut self /* , frame_buffer: &mut FrameBuffer*/, id: u32) {
+    pub fn draw_id(&mut self, id: u32) {
         let mut draw = false;
         let mut window_area = Rectrange {
             pos_lu: Vector2D { x: 0, y: 0 },
@@ -165,7 +164,6 @@ impl LayerManager {
                     if let Some(window) = &layer.window {
                         window.borrow().draw_to_area(
                             &mut *self.screen,
-                            //       frame_buffer,
                             Vector2D {
                                 x: layer.pos.x.max(0),
                                 y: layer.pos.y.max(0),

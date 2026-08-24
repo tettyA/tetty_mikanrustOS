@@ -64,7 +64,7 @@ static mut FRAME_BUFFER: *mut FrameBuffer = core::ptr::null_mut();
 pub fn redraw_layers_all() {
     unsafe {
         if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
-            (*LAYER_MANAGER).draw_all(); //&mut *FRAME_BUFFER);
+            (*LAYER_MANAGER).draw_all();
         }
     }
 }
@@ -72,7 +72,7 @@ pub fn redraw_layers_all() {
 pub fn redraw_layers_id(id: u32) {
     unsafe {
         if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
-            (*LAYER_MANAGER).draw_id(/*&mut *FRAME_BUFFER,*/ id);
+            (*LAYER_MANAGER).draw_id(id);
         }
     }
 }
