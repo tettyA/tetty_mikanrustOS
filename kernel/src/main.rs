@@ -86,16 +86,13 @@ pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
                 (old_pos.x + kMouseCursorWidth as i32).max(new_pos.x + kMouseCursorWidth as i32);
             let bottom =
                 (old_pos.y + kMouseCursorHeight as i32).max(new_pos.y + kMouseCursorHeight as i32);
-            (*LAYER_MANAGER).draw_area(
-                //  &mut *FRAME_BUFFER,
-                Rectrange {
-                    pos_lu: Vector2D { x: left, y: top },
-                    size: Vector2D {
-                        x: right - left,
-                        y: bottom - top,
-                    },
+            (*LAYER_MANAGER).draw_area(Rectrange {
+                pos_lu: Vector2D { x: left, y: top },
+                size: Vector2D {
+                    x: right - left,
+                    y: bottom - top,
                 },
-            );
+            });
         }
     }
 }
@@ -307,7 +304,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         LAYER_MANAGER = &mut layer_manager;
         FRAME_BUFFER = &mut frame_buffer;
     }
-    layer_manager.draw_all(); //(&mut frame_buffer);
+    layer_manager.draw_all();
     console::init(console);
 
     printk!("Welcome to tettya OS!!\n");

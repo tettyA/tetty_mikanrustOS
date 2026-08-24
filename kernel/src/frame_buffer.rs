@@ -27,7 +27,9 @@ impl FrameBuffer {
 
         Self { config, buffer }
     }
-
+    pub fn get_config_mut(&mut self) -> &mut FrameBufferConfig {
+        &mut self.config
+    }
     pub fn get_slice_mut(&mut self) -> &mut [u8] {
         if self.buffer.is_empty() {
             let size =
@@ -85,6 +87,47 @@ impl FrameBuffer {
             let src_offset =
                 (current_src_y * src_pixels_per_scan_line + src_start_x) * bytes_per_pixel;
 
+            let line_bytes = copy_width * bytes_per_pixel;
+
+            dst_slice[dst_offset as usize..(dst_offset + line_bytes) as usize].copy_from_slice(
+                &src_slice[src_offset as usize..(src_offset + line_bytes) as usize],
+            );
+        }
+    }
+
+    pub fn copy_area(&mut self, area: &Rectrange<i32>, src: &FrameBuffer) {
+        let bytes_per_pixel = 4;
+
+        let dst_width = self.config.horizontal_resolution;
+        let dst_height = self.config.vertical_resolution;
+        let src_width = src.config.horizontal_resolution;
+        let src_height = src.config.vertical_resolution;
+        let start_x = area.pos_lu.x.max(0) as u32;
+        let start_y = area.pos_lu.y.max(0) as u32;
+        let end_x = ((area.pos_lu.x + area.size.x).max(0) as u32)
+            .min(dst_width)
+            .min(src_width);
+        let end_y = ((area.pos_lu.y + area.size.y).max(0) as u32)
+            .min(dst_height)
+            .min(src_height);
+
+        if start_x >= end_x || start_y >= end_y {
+            return;
+        }
+
+        let copy_width = end_x - start_x;
+        let copy_height = end_y - start_y;
+
+        let dst_pixels_per_scan_line = self.config.pixels_per_scan_line;
+        let src_pixels_per_scan_line = src.config.pixels_per_scan_line;
+
+        let dst_slice = self.get_slice_mut();
+        let src_slice = src.get_slice();
+
+        for y in 0..copy_height {
+            let current_y = start_y + y;
+            let dst_offset = (current_y * dst_pixels_per_scan_line + start_x) * bytes_per_pixel;
+            let src_offset = (current_y * src_pixels_per_scan_line + start_x) * bytes_per_pixel;
             let line_bytes = copy_width * bytes_per_pixel;
 
             dst_slice[dst_offset as usize..(dst_offset + line_bytes) as usize].copy_from_slice(

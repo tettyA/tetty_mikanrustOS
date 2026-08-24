@@ -1,4 +1,4 @@
-use core::cell::RefCell;
+use core::{cell::RefCell, ptr::null_mut};
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 
@@ -56,15 +56,19 @@ pub struct LayerManager {
     // 末尾が最全面(最も最後に描画される。) layers[layer_stack[i]] (i in 0..N) で描画
     layer_stack: Vec<*mut Layer>,
     screen: *mut FrameBuffer,
+    back_buffer: FrameBuffer,
 }
 
 impl LayerManager {
     pub fn new(screen: *mut FrameBuffer) -> Self {
+        let mut backbuffer_config = *unsafe { (*screen).get_config_mut() };
+        backbuffer_config.frame_buffer = null_mut();
         Self {
             latest_id: 1,
             layers: Vec::new(),
             layer_stack: Vec::new(),
             screen,
+            back_buffer: FrameBuffer::new(backbuffer_config),
         }
     }
 
@@ -126,13 +130,13 @@ impl LayerManager {
         }
     }
 
-    pub fn draw_area(&self, area: Rectrange<i32>) {
+    pub fn draw_area(&mut self, area: Rectrange<i32>) {
         for &l in &self.layer_stack {
             unsafe {
                 let layer = &*l;
                 if let Some(window) = &layer.window {
                     window.borrow().draw_to_area(
-                        &mut *self.screen,
+                        &mut self.back_buffer,
                         Vector2D {
                             x: layer.pos.x.max(0),
                             y: layer.pos.y.max(0),
@@ -142,6 +146,7 @@ impl LayerManager {
                 }
             }
         }
+        unsafe { &mut *(self.screen) }.copy_area(&area, &self.back_buffer);
     }
 
     pub fn draw_id(&mut self, id: u32) {
@@ -154,6 +159,7 @@ impl LayerManager {
             unsafe {
                 let layer = &*l;
                 if layer.id == id {
+                    window_area.pos_lu = layer.pos;
                     window_area.size = Vector2D {
                         x: layer.window.as_ref().unwrap().borrow().width() as i32,
                         y: layer.window.as_ref().unwrap().borrow().height() as i32,
@@ -163,7 +169,7 @@ impl LayerManager {
                 if draw {
                     if let Some(window) = &layer.window {
                         window.borrow().draw_to_area(
-                            &mut *self.screen,
+                            &mut self.back_buffer,
                             Vector2D {
                                 x: layer.pos.x.max(0),
                                 y: layer.pos.y.max(0),
@@ -172,9 +178,12 @@ impl LayerManager {
                         );
                     }
                 }
+
+                (&mut *self.screen).copy_area(&window_area, &self.back_buffer);
             }
         }
     }
+
     fn find_layer(&mut self, id: u32) -> Option<&mut Layer> {
         if let Some(layer) = self.layers.iter_mut().find(|l| l.id == id) {
             Some(layer)
