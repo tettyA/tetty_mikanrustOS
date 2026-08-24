@@ -55,14 +55,16 @@ pub struct LayerManager {
     layers: Vec<Box<Layer>>,
     // 末尾が最全面(最も最後に描画される。) layers[layer_stack[i]] (i in 0..N) で描画
     layer_stack: Vec<*mut Layer>,
+    screen: *mut FrameBuffer,
 }
 
 impl LayerManager {
-    pub fn new() -> Self {
+    pub fn new(screen: *mut FrameBuffer) -> Self {
         Self {
             latest_id: 1,
             layers: Vec::new(),
             layer_stack: Vec::new(),
+            screen,
         }
     }
 
@@ -107,13 +109,14 @@ impl LayerManager {
         self.up_down(id, new_z);
     }
 
-    pub fn draw_all(&self, frame_buffer: &mut FrameBuffer) {
+    pub fn draw_all(&self) {
+        //, frame_buffer: &mut FrameBuffer) {
         for &l in &self.layer_stack {
             unsafe {
                 let layer = &*l;
                 if let Some(window) = &layer.window {
                     window.borrow().draw_to(
-                        frame_buffer,
+                        &mut *self.screen, //frame_buffer,
                         Vector2D {
                             x: layer.pos.x.max(0),
                             y: layer.pos.y.max(0),
@@ -124,13 +127,13 @@ impl LayerManager {
         }
     }
 
-    pub fn draw_area(&self, frame_buffer: &mut FrameBuffer, area: Rectrange<i32>) {
+    pub fn draw_area(&self /* , frame_buffer: &mut FrameBuffer*/, area: Rectrange<i32>) {
         for &l in &self.layer_stack {
             unsafe {
                 let layer = &*l;
                 if let Some(window) = &layer.window {
                     window.borrow().draw_to_area(
-                        frame_buffer,
+                        &mut *self.screen, //  frame_buffer,
                         Vector2D {
                             x: layer.pos.x.max(0),
                             y: layer.pos.y.max(0),
@@ -142,7 +145,7 @@ impl LayerManager {
         }
     }
 
-    pub fn draw_id(&mut self, frame_buffer: &mut FrameBuffer, id: u32) {
+    pub fn draw_id(&mut self /* , frame_buffer: &mut FrameBuffer*/, id: u32) {
         let mut draw = false;
         let mut window_area = Rectrange {
             pos_lu: Vector2D { x: 0, y: 0 },
@@ -161,7 +164,8 @@ impl LayerManager {
                 if draw {
                     if let Some(window) = &layer.window {
                         window.borrow().draw_to_area(
-                            frame_buffer,
+                            &mut *self.screen,
+                            //       frame_buffer,
                             Vector2D {
                                 x: layer.pos.x.max(0),
                                 y: layer.pos.y.max(0),

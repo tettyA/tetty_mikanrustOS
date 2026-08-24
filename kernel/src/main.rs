@@ -64,7 +64,7 @@ static mut FRAME_BUFFER: *mut FrameBuffer = core::ptr::null_mut();
 pub fn redraw_layers_all() {
     unsafe {
         if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
-            (*LAYER_MANAGER).draw_all(&mut *FRAME_BUFFER);
+            (*LAYER_MANAGER).draw_all(); //&mut *FRAME_BUFFER);
         }
     }
 }
@@ -72,7 +72,7 @@ pub fn redraw_layers_all() {
 pub fn redraw_layers_id(id: u32) {
     unsafe {
         if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
-            (*LAYER_MANAGER).draw_id(&mut *FRAME_BUFFER, id);
+            (*LAYER_MANAGER).draw_id(/*&mut *FRAME_BUFFER,*/ id);
         }
     }
 }
@@ -87,7 +87,7 @@ pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
             let bottom =
                 (old_pos.y + kMouseCursorHeight as i32).max(new_pos.y + kMouseCursorHeight as i32);
             (*LAYER_MANAGER).draw_area(
-                &mut *FRAME_BUFFER,
+                //  &mut *FRAME_BUFFER,
                 Rectrange {
                     pos_lu: Vector2D { x: left, y: top },
                     size: Vector2D {
@@ -259,7 +259,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         frame_buffer_config.pixel_format,
     )));
 
-    let mut layer_manager: LayerManager = LayerManager::new();
+    let mut layer_manager: LayerManager = LayerManager::new(core::ptr::addr_of_mut!(frame_buffer));
     let bg_layer_id = layer_manager
         .new_layer()
         .set_window(bg_window.clone())
@@ -307,8 +307,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         LAYER_MANAGER = &mut layer_manager;
         FRAME_BUFFER = &mut frame_buffer;
     }
-    layer_manager.draw_all(&mut frame_buffer);
-
+    layer_manager.draw_all(); //(&mut frame_buffer);
     console::init(console);
 
     printk!("Welcome to tettya OS!!\n");
