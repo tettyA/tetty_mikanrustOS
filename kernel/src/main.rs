@@ -4,6 +4,7 @@
 mod allocator;
 mod console;
 mod font;
+mod frame_buffer;
 mod frame_buffer_config;
 mod graphics;
 mod interrupts;
@@ -200,7 +201,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
     let frame_height: usize = frame_buffer_config.vertical_resolution as usize;
 
-    let mut bg_window = Window::new(frame_width, frame_height);
+    let mut bg_window = Window::new(frame_width, frame_height, frame_buffer_config.pixel_format);
 
     let bg_writer = bg_window.writer();
 
@@ -212,6 +213,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     let mouse_window = Rc::new(RefCell::new(Window::new(
         kMouseCursorWidth,
         kMouseCursorHeight,
+        frame_buffer_config.pixel_format,
     )));
 
     let mut layer_manager: LayerManager = LayerManager::new();

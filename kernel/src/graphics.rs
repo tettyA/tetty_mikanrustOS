@@ -27,17 +27,24 @@ impl PixelDraw for PixelWriter {
 pub struct Bgrpixelwriter {
     frame_buffer: *mut u8,
     pixels_per_scan_line: usize,
+    horizontal_resolution: usize,
+    vertical_resolution: usize,
 }
 impl Bgrpixelwriter {
     pub fn new(config: &FrameBufferConfig) -> Self {
         Self {
             frame_buffer: config.frame_buffer,
             pixels_per_scan_line: config.pixels_per_scan_line as usize,
+            horizontal_resolution: config.horizontal_resolution as usize,
+            vertical_resolution: config.vertical_resolution as usize,
         }
     }
 }
 impl Bgrpixelwriter {
     fn write(&self, x: usize, y: usize, c: &PixelColor) {
+        if x >= self.horizontal_resolution || y >= self.vertical_resolution {
+            return;
+        }
         let pixel_posititon = (self.pixels_per_scan_line as usize * y) + x;
         let offset = 4 * pixel_posititon as usize;
         unsafe {
@@ -50,17 +57,24 @@ impl Bgrpixelwriter {
 pub struct Rgbpixelwriter {
     frame_buffer: *mut u8,
     pixels_per_scan_line: usize,
+    horizontal_resolution: usize,
+    vertical_resolution: usize,
 }
 impl Rgbpixelwriter {
     pub fn new(config: &FrameBufferConfig) -> Self {
         Self {
             frame_buffer: config.frame_buffer,
             pixels_per_scan_line: config.pixels_per_scan_line as usize,
+            horizontal_resolution: config.horizontal_resolution as usize,
+            vertical_resolution: config.vertical_resolution as usize,
         }
     }
 }
 impl Rgbpixelwriter {
     fn write(&self, x: usize, y: usize, c: &PixelColor) {
+        if x >= self.horizontal_resolution || y >= self.vertical_resolution {
+            return;
+        }
         let pixel_posititon = (self.pixels_per_scan_line as usize * y) + x;
         let offset = 4 * pixel_posititon as usize;
         unsafe {

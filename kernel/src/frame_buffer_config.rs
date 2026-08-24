@@ -1,10 +1,11 @@
 #[repr(C)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum PixelFormat {
     kPixelRGBResv8BitPerColor,
     kPixelBGRResv8BitPerColor,
 }
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct FrameBufferConfig {
     pub frame_buffer: *mut u8,

@@ -41,8 +41,8 @@ impl Layer {
             window.borrow().draw_to(
                 writer,
                 Vector2D {
-                    x: self.pos.x.max(0) as usize,
-                    y: self.pos.y.max(0) as usize,
+                    x: self.pos.x.max(0),
+                    y: self.pos.y.max(0),
                 },
             );
         }
@@ -114,8 +114,8 @@ impl LayerManager {
                     window.borrow().draw_to(
                         writer,
                         Vector2D {
-                            x: layer.pos.x.max(0) as usize,
-                            y: layer.pos.y.max(0) as usize,
+                            x: layer.pos.x.max(0),
+                            y: layer.pos.y.max(0),
                         },
                     );
                 }
