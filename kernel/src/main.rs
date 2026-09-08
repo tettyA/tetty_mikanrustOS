@@ -13,9 +13,11 @@ mod memory_manager;
 mod memory_map;
 mod mousecursor;
 mod paging;
+mod pci;
 mod queue;
 mod segment;
 mod timer;
+mod usb;
 mod window;
 extern crate alloc;
 use crate::console::{Console, ConsoleWriter};
@@ -39,13 +41,6 @@ use core::arch::asm;
 use core::cell::RefCell;
 use core::panic::PanicInfo;
 use core::ptr::addr_of_mut;
-
-unsafe extern "C" {
-    fn usb_process_events();
-    fn usb_enumarate();
-    fn usb_set_mouse_obserever(observer: extern "C" fn(i8, i8));
-    fn xhc_primaryeventring_hasfront() -> bool;
-}
 
 const DESKTOP_BGCOLOR: PixelColor = PixelColor {
     r: 120,
@@ -297,8 +292,8 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     console.set_redraw(redraw_layers_id);
     layer_manager.up_down(bg_layer_id, 0);
     layer_manager.up_down(mouse_layer_id, 3);
-    layer_manager.up_down(main_window_id, 2);
-    layer_manager.up_down(console.get_layer_id(), 1);
+    layer_manager.up_down(main_window_id, 1);
+    layer_manager.up_down(console.get_layer_id(), 2);
 
     unsafe {
         LAYER_MANAGER = &mut layer_manager;
@@ -342,9 +337,8 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     }
 
     unsafe {
-        usb_set_mouse_obserever(crate::mousecursor::moverelative);
-
-        usb_enumarate();
+        crate::usb::usb_set_mouse_obserever(crate::mousecursor::moverelative);
+        crate::usb::usb_enumarate();
         asm!("sti");
     }
     printk!("Success ScanAllBus\n");
@@ -397,6 +391,9 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             );
             window_cnt += 1;
             redraw_layers_id(main_window_id);
+            if crate::usb::xhc_primaryeventring_hasfront() {
+                crate::usb::usb_process_events();
+            }
             asm!("cli");
             let q = &mut *addr_of_mut!(INTERRUPTMESSAGE_QUEUE);
 
@@ -404,8 +401,8 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
                 asm!("sti");
                 match msg {
                     interrupts::InterruptMessage::InterruptXhci => {
-                        while xhc_primaryeventring_hasfront() {
-                            usb_process_events();
+                        while crate::usb::xhc_primaryeventring_hasfront() {
+                            crate::usb::usb_process_events();
                         }
                     }
                 }

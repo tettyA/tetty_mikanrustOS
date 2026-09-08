@@ -1,5 +1,5 @@
 use crate::font::{write_ascii, write_string};
-use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D};
+use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Vector2D};
 use crate::window::Window;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -90,7 +90,7 @@ impl<'a> Console<'a> {
             writer,
             fg_color,
             bg_color,
-            buffer: [[0; Self::COLUMN_NUM]; Self::ROW_NUM + 1],
+            buffer: [[b' '; Self::COLUMN_NUM]; Self::ROW_NUM + 1],
             cursor_row: 0,
             cursor_column: 0,
             redraw: None,
@@ -122,9 +122,29 @@ impl<'a> Console<'a> {
     }
     pub fn put_string(&mut self, str: &str) {
         for c in str.bytes() {
-            if c == '\n' as u8 {
+            if c == b'\r' {
+                self.cursor_column = 0;
+            } else if c == b'\n' {
                 self.new_line();
-            } else if self.cursor_column < Self::COLUMN_NUM - 1 {
+            } else if c == b'\t' {
+                let next_tab = (self.cursor_column / 4 + 1) * 4;
+                while self.cursor_column < next_tab {
+                    self.put_printable(b' ');
+                }
+            } else {
+                self.put_printable(c);
+            }
+        }
+        if let Some(redraw) = self.redraw {
+            redraw(self.layer_id);
+        }
+    }
+
+    fn put_printable(&mut self, c: u8) {
+        if self.cursor_column >= Self::COLUMN_NUM {
+            self.new_line();
+        }
+        if self.cursor_column < Self::COLUMN_NUM {
                 write_ascii(
                     &self.writer,
                     8 * self.cursor_column,
@@ -134,10 +154,6 @@ impl<'a> Console<'a> {
                 );
                 self.buffer[self.cursor_row][self.cursor_column] = c;
                 self.cursor_column += 1;
-            }
-        }
-        if let Some(redraw) = self.redraw {
-            redraw(self.layer_id);
         }
     }
     fn new_line(&mut self) {
@@ -164,35 +180,33 @@ impl<'a> Console<'a> {
                         &self.fg_color,
                     );
                 }
-                self.buffer[Self::ROW_NUM - 1] = [0; Self::COLUMN_NUM];
+                self.buffer[Self::ROW_NUM - 1] = [b' '; Self::COLUMN_NUM];
             }
             ConsoleWriter::Window(ref_cell) => {
                 for row in 0..Self::ROW_NUM - 1 {
                     self.buffer[row] = self.buffer[row + 1];
                 }
-                self.buffer[Self::ROW_NUM - 1] = [0; Self::COLUMN_NUM];
+                self.buffer[Self::ROW_NUM - 1] = [b' '; Self::COLUMN_NUM];
 
                 let mut window = ref_cell.borrow_mut();
-
-                let move_src = Rectrange {
-                    pos_lu: Vector2D { x: 0, y: 16 },
-                    size: Vector2D {
-                        x: 8 * Self::COLUMN_NUM as i32,
-                        y: 16 * (Self::ROW_NUM - 1) as i32,
-                    },
-                };
-                window.window_move(Vector2D { x: 0, y: 0 }, &move_src);
                 window.fill_rect(
-                    Vector2D {
-                        x: 0,
-                        y: 16 * (Self::ROW_NUM - 1),
-                    },
+                    Vector2D { x: 0, y: 0 },
                     Vector2D {
                         x: 8 * Self::COLUMN_NUM,
-                        y: 16,
+                        y: 16 * Self::ROW_NUM,
                     },
                     self.bg_color,
                 );
+                let window_writer = window.writer();
+                for row in 0..Self::ROW_NUM {
+                    write_string(
+                        &window_writer,
+                        0,
+                        16 * row,
+                        core::str::from_utf8(&self.buffer[row]).unwrap(),
+                        &self.fg_color,
+                    );
+                }
             }
         };
     }
