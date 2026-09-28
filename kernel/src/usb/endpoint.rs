@@ -1,4 +1,9 @@
-#![allow(non_camel_case_types, non_snake_case, non_upper_case_globals, dead_code)]
+#![allow(
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code
+)]
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -56,10 +56,22 @@ pub struct SetupData {
 
 impl SetupData {
     pub const fn new(request_type: u8, request: u8, value: u16, index: u16, length: u16) -> Self {
-        Self { request_type, request, value, index, length }
+        Self {
+            request_type,
+            request,
+            value,
+            index,
+            length,
+        }
     }
 
-    pub const fn recipient(self) -> u8 { self.request_type & 0x1f }
-    pub const fn type_(self) -> u8 { (self.request_type >> 5) & 0x03 }
-    pub const fn direction(self) -> u8 { self.request_type >> 7 }
+    pub const fn recipient(self) -> u8 {
+        self.request_type & 0x1f
+    }
+    pub const fn type_(self) -> u8 {
+        (self.request_type >> 5) & 0x03
+    }
+    pub const fn direction(self) -> u8 {
+        self.request_type >> 7
+    }
 }
