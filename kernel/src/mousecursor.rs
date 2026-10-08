@@ -1,8 +1,8 @@
-use core::ptr::addr_of_mut;
+use crate::global::Global;
 
 use crate::{
     graphics::{PixelColor, PixelDraw, Vector2D},
-    layer::LayerManager,
+    layer::LAYER_MANAGER,
     printk, timer,
 };
 pub const kMouseCursorWidth: usize = 15;
@@ -40,7 +40,7 @@ const MOUSE_CURSOR_SHAPE: [&'static str; kMouseCursorHeight] = [
 ];
 
 pub struct MouseCursor {
-    layer_manager: Option<*mut LayerManager>,
+    initialized: bool,
     layer_id: u32,
     redraw: Option<fn()>,
     redraw_area: Option<fn(Vector2D<i32>, Vector2D<i32>)>,
@@ -51,7 +51,7 @@ pub struct MouseCursor {
 impl MouseCursor {
     pub const fn new() -> Self {
         Self {
-            layer_manager: None,
+            initialized: false,
             layer_id: 0,
             redraw: None,
             redraw_area: None,
@@ -61,13 +61,12 @@ impl MouseCursor {
     }
     pub unsafe fn init(
         &mut self,
-        layer_manager: *mut LayerManager,
         layer_id: u32,
         screen_size: Vector2D<usize>,
         redraw: fn(),
         redraw_area: fn(Vector2D<i32>, Vector2D<i32>),
     ) {
-        self.layer_manager = Some(layer_manager);
+        self.initialized = true;
         self.layer_id = layer_id;
         self.screen_size = screen_size;
         self.redraw = Some(redraw);
@@ -75,7 +74,7 @@ impl MouseCursor {
     }
 
     pub unsafe fn move_relative(&mut self, displacement: Vector2D<i32>) {
-        if self.layer_manager.is_none() {
+        if !self.initialized {
             return;
         }
 
@@ -95,11 +94,11 @@ impl MouseCursor {
         }
 
         timer::start_lapic_timer();
-        if let Some(layer_manager) = self.layer_manager {
-            unsafe {
-                (*layer_manager).move_layer(self.layer_id, self.position);
+        LAYER_MANAGER.with(|lm| {
+            if let Some(lm) = lm {
+                lm.move_layer(self.layer_id, self.position);
             }
-        }
+        });
         if let Some(redraw_area) = self.redraw_area {
             redraw_area(old_position, self.position);
         }
@@ -129,16 +128,14 @@ impl MouseCursor {
         }
     }
 }
-pub static mut MOUSE_CURSOR: MouseCursor = MouseCursor::new();
+pub static MOUSE_CURSOR: Global<MouseCursor> = Global::new(MouseCursor::new());
 pub extern "C" fn moverelative(displacement_x: i8, displacement_y: i8) {
-    unsafe {
-        let cursor = &mut *addr_of_mut!(MOUSE_CURSOR);
-
+    MOUSE_CURSOR.with(|cursor| unsafe {
         cursor.move_relative(Vector2D {
             x: displacement_x as i32,
             y: displacement_y as i32,
         });
-    }
+    });
 }
 
 /// `usb::HIDMouseDriver` に登録するオブザーバ (本家 main.cpp の `MouseObserver` 相当)．

@@ -6,6 +6,7 @@ mod console;
 mod font;
 mod frame_buffer;
 mod frame_buffer_config;
+mod global;
 mod graphics;
 mod interrupts;
 mod layer;
@@ -32,7 +33,7 @@ use crate::graphics::{
     PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D, draw_rectrange, fill_rectrange,
 };
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
-use crate::layer::LayerManager;
+use crate::layer::{LAYER_MANAGER, LayerManager};
 use crate::memory_manager::{BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE};
 use crate::memory_map::{MemoryDescriptor, MemoryMap};
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
@@ -40,7 +41,6 @@ use crate::window::{Window, draw_window};
 use core::arch::asm;
 use core::cell::RefCell;
 use core::panic::PanicInfo;
-use core::ptr::addr_of_mut;
 
 const DESKTOP_BGCOLOR: PixelColor = PixelColor {
     r: 120,
@@ -53,35 +53,35 @@ struct KernelStack([u8; 1024 * 1024]);
 
 // exclusive stack for kernel
 static KERNEL_STACK: KernelStack = KernelStack([0; 1024 * 1024]);
-static mut LAYER_MANAGER: *mut LayerManager = core::ptr::null_mut();
-static mut FRAME_BUFFER: *mut FrameBuffer = core::ptr::null_mut();
 
+/// 全レイヤーを再描画する (LAYER_MANAGER 初期化前は何もしない)。
 pub fn redraw_layers_all() {
-    unsafe {
-        if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
-            (*LAYER_MANAGER).draw_all();
+    LAYER_MANAGER.with(|lm| {
+        if let Some(lm) = lm {
+            lm.draw_all();
         }
-    }
+    });
 }
 
+/// レイヤー `id` の領域を再描画する (LAYER_MANAGER 初期化前は何もしない)。
 pub fn redraw_layers_id(id: u32) {
-    unsafe {
-        if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
-            (*LAYER_MANAGER).draw_id(id);
+    LAYER_MANAGER.with(|lm| {
+        if let Some(lm) = lm {
+            lm.draw_id(id);
         }
-    }
+    });
 }
 
+/// マウスカーソルの移動前後の領域を再描画する。
 pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
-    unsafe {
-        if !LAYER_MANAGER.is_null() && !FRAME_BUFFER.is_null() {
-            let left = old_pos.x.min(new_pos.x);
-            let top = old_pos.y.min(new_pos.y);
-            let right =
-                (old_pos.x + kMouseCursorWidth as i32).max(new_pos.x + kMouseCursorWidth as i32);
-            let bottom =
-                (old_pos.y + kMouseCursorHeight as i32).max(new_pos.y + kMouseCursorHeight as i32);
-            (*LAYER_MANAGER).draw_area(Rectrange {
+    let left = old_pos.x.min(new_pos.x);
+    let top = old_pos.y.min(new_pos.y);
+    let right = (old_pos.x + kMouseCursorWidth as i32).max(new_pos.x + kMouseCursorWidth as i32);
+    let bottom =
+        (old_pos.y + kMouseCursorHeight as i32).max(new_pos.y + kMouseCursorHeight as i32);
+    LAYER_MANAGER.with(|lm| {
+        if let Some(lm) = lm {
+            lm.draw_area(Rectrange {
                 pos_lu: Vector2D { x: left, y: top },
                 size: Vector2D {
                     x: right - left,
@@ -89,7 +89,7 @@ pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
                 },
             });
         }
-    }
+    });
 }
 
 // must wrap the attribute 'no_mangle' by unsafe(...)
@@ -179,8 +179,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     paging::setup_identify_page_table();
 
     //compile_error!("メモリマップ実装してない(8.16)");
-    unsafe {
-        let memory_manager = &mut *addr_of_mut!(MEMORY_MANAGER);
+    MEMORY_MANAGER.with(|memory_manager| unsafe {
         let mut available_end = 0 as usize;
         for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
             let ptr = memory_map
@@ -214,7 +213,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
                 id: available_end / BYTES_PER_FRAME,
             },
         );
-    }
+    });
 
     allocator::init_heap();
     timer::initialize_lapic_timer();
@@ -222,7 +221,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
 
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
     let frame_height: usize = frame_buffer_config.vertical_resolution as usize;
-    let mut frame_buffer = FrameBuffer::new(*frame_buffer_config);
+    let frame_buffer = FrameBuffer::new(*frame_buffer_config);
 
     let mut bg_window = Window::new(frame_width, frame_height, frame_buffer_config.pixel_format);
 
@@ -251,7 +250,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         frame_buffer_config.pixel_format,
     )));
 
-    let mut layer_manager: LayerManager = LayerManager::new(core::ptr::addr_of_mut!(frame_buffer));
+    let mut layer_manager: LayerManager = LayerManager::new(frame_buffer);
     let bg_layer_id = layer_manager
         .new_layer()
         .set_window(bg_window.clone())
@@ -295,19 +294,15 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     layer_manager.up_down(main_window_id, 2);
     layer_manager.up_down(console.get_layer_id(), 1);
 
-    unsafe {
-        LAYER_MANAGER = &mut layer_manager;
-        FRAME_BUFFER = &mut frame_buffer;
-    }
-    layer_manager.draw_all();
+    LAYER_MANAGER.with(|lm| *lm = Some(layer_manager));
+    redraw_layers_all();
     console::init(console);
 
     printk!("Welcome to tettya OS!!\n");
 
     unsafe {
-        let cursor = &mut *addr_of_mut!(MOUSE_CURSOR);
+        MOUSE_CURSOR.with(|cursor| {
         cursor.init(
-            &mut layer_manager,
             mouse_layer_id,
             Vector2D {
                 x: frame_width,
@@ -333,6 +328,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             );
             cursor.draw(&mouse_writer);
         }
+        });
         redraw_layers_all();
     }
 
@@ -392,20 +388,16 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             );
             window_cnt += 1;
             redraw_layers_id(main_window_id);
-            asm!("cli");
-            let q = &mut *addr_of_mut!(INTERRUPTMESSAGE_QUEUE);
-
-            if let Some(msg) = q.pop() {
-                asm!("sti");
-                match msg {
-                    interrupts::InterruptMessage::InterruptXhci => {
-                        usb::xhci::ProcessEvents();
-                    }
+            // キューの確認と hlt の間に割り込みが入ると取りこぼすため、
+            // 割り込み禁止のまま確認し、無ければ `sti; hlt` (sti 直後の1命令は割り込まれない) で待つ。
+            x86_64::instructions::interrupts::disable();
+            let msg = INTERRUPTMESSAGE_QUEUE.with(|q| q.pop());
+            match msg {
+                Some(interrupts::InterruptMessage::InterruptXhci) => {
+                    x86_64::instructions::interrupts::enable();
+                    usb::xhci::ProcessEvents();
                 }
-            } else {
-                // asm!("sti\n\thlt");
-                asm!("sti");
-                continue;
+                None => x86_64::instructions::interrupts::enable_and_hlt(),
             }
         }
     }

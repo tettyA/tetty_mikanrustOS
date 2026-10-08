@@ -1,28 +1,25 @@
 use crate::font::{write_ascii, write_string};
 use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D};
 use crate::window::Window;
-use alloc::boxed::Box;
+use crate::global::Global;
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use core::fmt::{self, Arguments, Write};
 
-static mut CONSOLE: *mut Console<'static> = core::ptr::null_mut();
+static CONSOLE: Global<Option<Console<'static>>> = Global::new(None);
 
 /// Initialize the kernel-wide console. Calls before initialization are discarded.
 pub fn init(console: Console<'static>) {
-    unsafe {
-        CONSOLE = Box::into_raw(Box::new(console));
-    }
+    CONSOLE.with(|c| *c = Some(console));
 }
 
 /// Write formatted text from normal kernel context.
 pub fn printk(args: Arguments<'_>) {
-    unsafe {
-        let console = CONSOLE;
-        if !console.is_null() {
-            let _ = (&mut *console).write_fmt(args);
+    CONSOLE.with(|c| {
+        if let Some(console) = c {
+            let _ = console.write_fmt(args);
         }
-    }
+    });
 }
 
 #[macro_export]

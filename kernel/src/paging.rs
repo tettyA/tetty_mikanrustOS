@@ -1,5 +1,4 @@
-use core::ptr::addr_of_mut;
-
+use crate::global::Global;
 use core::arch::asm;
 
 const PAGE_SIZE_4K: usize = 4096;
@@ -10,15 +9,12 @@ const PAGE_SIZE_1G: usize = 512 * PAGE_SIZE_2M;
 #[derive(Clone, Copy)]
 struct PageTable([u64; 512]); // same as std::array<uint64_t,512> (in memory-structure)
 
-static mut PML4_TABLE: PageTable = PageTable([0; 512]);
-static mut PDP_TABLE: PageTable = PageTable([0; 512]);
-static mut PAGE_DIRECTORY: [PageTable; 64] = [PageTable([0; 512]); 64];
+static PML4_TABLE: Global<PageTable> = Global::new(PageTable([0; 512]));
+static PDP_TABLE: Global<PageTable> = Global::new(PageTable([0; 512]));
+static PAGE_DIRECTORY: Global<[PageTable; 64]> = Global::new([PageTable([0; 512]); 64]);
 
 pub fn setup_identify_page_table() {
-    unsafe {
-        let pml4_table = &mut *addr_of_mut!(PML4_TABLE);
-        let pdp_table = &mut *addr_of_mut!(PDP_TABLE);
-        let page_directory = &mut *addr_of_mut!(PAGE_DIRECTORY);
+    PML4_TABLE.with(|pml4_table| PDP_TABLE.with(|pdp_table| PAGE_DIRECTORY.with(|page_directory| unsafe {
 
         pml4_table.0[0] = (pdp_table.0.as_ptr() as u64) | 0x003;
         for i_pdpt in 0..page_directory.len() {
@@ -34,5 +30,5 @@ pub fn setup_identify_page_table() {
             "mov cr3, {}",
             in(reg) cr3_val
         );
-    }
+    })));
 }

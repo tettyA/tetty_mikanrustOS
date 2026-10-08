@@ -1,14 +1,13 @@
-use core::ptr::addr_of_mut;
-
+use crate::global::Global;
 use x86_64::{
     registers::segmentation::{CS, DS, ES, FS, GS, SS, Segment},
     structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector},
 };
 
-static mut GDT: GlobalDescriptorTable = GlobalDescriptorTable::new();
+static GDT: Global<GlobalDescriptorTable> = Global::new(GlobalDescriptorTable::new());
 
 pub fn init_segment() {
-    let gdt = unsafe { &mut *addr_of_mut!(GDT) };
+    GDT.init_static(|gdt| {
 
     // 0th data is added when GlobalDescriptorTable::new() runned and filled all-zero.
 
@@ -26,4 +25,5 @@ pub fn init_segment() {
         GS::set_reg(null_selector);
         SS::set_reg(data_selector);
     }
+    });
 }

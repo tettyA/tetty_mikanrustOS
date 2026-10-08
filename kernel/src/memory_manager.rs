@@ -1,4 +1,4 @@
-use core::{iter::Map, num};
+use crate::global::Global;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct FrameID {
@@ -8,7 +8,7 @@ pub struct FrameID {
 type MapLineType = u64;
 pub const BYTES_PER_FRAME: usize = 4 * 1024;
 pub const UEFI_PAGE_SIZE: usize = 4096;
-pub static mut MEMORY_MANAGER: BitMapMamoryManager = BitMapMamoryManager::new();
+pub static MEMORY_MANAGER: Global<BitMapMamoryManager> = Global::new(BitMapMamoryManager::new());
 pub struct BitMapMamoryManager {
     alloc_map: [MapLineType; Self::FRAME_COUNT / Self::BITS_PER_MAP_LINE],
     range_begin: FrameID,
