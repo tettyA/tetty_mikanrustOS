@@ -2,8 +2,7 @@ use crate::global::Global;
 
 use crate::{
     graphics::{PixelColor, PixelDraw, Vector2D},
-    layer::LAYER_MANAGER,
-    printk, timer,
+    layer::LAYER_MANAGER, timer,
 };
 pub const kMouseCursorWidth: usize = 15;
 pub const kMouseCursorHeight: usize = 24;

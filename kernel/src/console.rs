@@ -1,5 +1,5 @@
 use crate::font::{write_ascii, write_string};
-use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D};
+use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Rectangle, Vector2D};
 use crate::window::Window;
 use crate::global::Global;
 use alloc::rc::Rc;
@@ -171,7 +171,7 @@ impl<'a> Console<'a> {
 
                 let mut window = ref_cell.borrow_mut();
 
-                let move_src = Rectrange {
+                let move_src = Rectangle {
                     pos_lu: Vector2D { x: 0, y: 16 },
                     size: Vector2D {
                         x: 8 * Self::COLUMN_NUM as i32,

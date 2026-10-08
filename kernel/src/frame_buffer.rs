@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use crate::{
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{PixelColor, PixelDraw, Rectrange, Vector2D},
+    graphics::{PixelColor, PixelDraw, Rectangle, Vector2D},
 };
 
 pub struct FrameBuffer {
@@ -95,7 +95,7 @@ impl FrameBuffer {
         }
     }
 
-    pub fn copy_area(&mut self, area: &Rectrange<i32>, src: &FrameBuffer) {
+    pub fn copy_area(&mut self, area: &Rectangle<i32>, src: &FrameBuffer) {
         let bytes_per_pixel = 4;
 
         let dst_width = self.config.horizontal_resolution;
@@ -135,7 +135,7 @@ impl FrameBuffer {
             );
         }
     }
-    pub fn r#move(&mut self, dst_pos: Vector2D<i32>, src: &Rectrange<i32>) {
+    pub fn r#move(&mut self, dst_pos: Vector2D<i32>, src: &Rectangle<i32>) {
         let bytes_per_pixel = bytes_per_pixel(&self.config.pixel_format) as usize;
         let bytes_per_scan_line = bytes_per_scan_line(&self.config) as usize;
         let width = src.size.x as usize;

@@ -170,7 +170,7 @@ pub struct PixelColor {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Rectrange<T> {
+pub struct Rectangle<T> {
     pub pos_lu: Vector2D<T>,
     pub size: Vector2D<T>,
 }

@@ -9,7 +9,7 @@ const INTERRUPTVECTOR_KXHCI: u8 = 0x40; // そう定義されている。
 // 割り込み記述子表
 static IDT: Global<InterruptDescriptorTable> = Global::new(InterruptDescriptorTable::new());
 
-extern "x86-interrupt" fn interrupt_handler_xhchi_mouse_cursor(stack_frame: InterruptStackFrame) {
+extern "x86-interrupt" fn interrupt_handler_xhchi_mouse_cursor(_stack_frame: InterruptStackFrame) {
     // キューが満杯なら取りこぼす (xHCI イベントは次の割り込みでまとめて処理される)
     let _ = INTERRUPTMESSAGE_QUEUE.with(|q| q.push(InterruptMessage::InterruptXhci));
     unsafe {

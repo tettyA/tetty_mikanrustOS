@@ -5,12 +5,12 @@ use crate::{
     font::write_string,
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D, fill_rectrange},
+    graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, fill_rectrange},
 };
 
-const kCloseButtonWidth: usize = 16;
-const kCloseButtonHeight: usize = 14;
-const WINDOW_CLOSE_BUTTON: [&'static str; kCloseButtonHeight] = [
+const K_CLOSE_BUTTON_WIDTH: usize = 16;
+const K_CLOSE_BUTTON_HEIGHT: usize = 14;
+const WINDOW_CLOSE_BUTTON: [&'static str; K_CLOSE_BUTTON_HEIGHT] = [
     "...............@",
     ".:::::::::::::$@",
     ".:::::::::::::$@",
@@ -71,7 +71,7 @@ pub fn draw_window<T: PixelDraw>(writer: &T, title: &str) {
             } else {
                 to_color(0x000000)
             };
-            writer.write(win_w - 5 - kCloseButtonWidth + x, 5 + y, &col);
+            writer.write(win_w - 5 - K_CLOSE_BUTTON_WIDTH + x, 5 + y, &col);
         }
     }
 }
@@ -101,7 +101,7 @@ impl Window {
             transparent_color: None,
         }
     }
-    pub fn window_move(&mut self, dst_pos: Vector2D<i32>, src: &Rectrange<i32>) {
+    pub fn window_move(&mut self, dst_pos: Vector2D<i32>, src: &Rectangle<i32>) {
         self.shadow_buffer.r#move(dst_pos, src);
     }
     pub fn write(&mut self, x: usize, y: usize, c: PixelColor) {
@@ -149,7 +149,7 @@ impl Window {
         }
     }
 
-    pub fn draw_to_area(&self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: Rectrange<i32>) {
+    pub fn draw_to_area(&self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: Rectangle<i32>) {
         let start_x = area.pos_lu.x.max(pos.x).max(0);
         let start_y = area.pos_lu.y.max(pos.y).max(0);
         let end_x = (area.pos_lu.x + area.size.x).min(pos.x + self.width as i32);
@@ -177,7 +177,7 @@ impl Window {
     }
 
     /// Get WindowWriter associated with this instance.
-    pub fn writer(&mut self) -> WindowWriter {
+    pub fn writer(&mut self) -> WindowWriter<'_> {
         WindowWriter {
             window: self as *mut Window,
             _marker: PhantomData,

@@ -8,13 +8,13 @@ pub struct FrameID {
 type MapLineType = u64;
 pub const BYTES_PER_FRAME: usize = 4 * 1024;
 pub const UEFI_PAGE_SIZE: usize = 4096;
-pub static MEMORY_MANAGER: Global<BitMapMamoryManager> = Global::new(BitMapMamoryManager::new());
-pub struct BitMapMamoryManager {
+pub static MEMORY_MANAGER: Global<BitMapMemoryManager> = Global::new(BitMapMemoryManager::new());
+pub struct BitMapMemoryManager {
     alloc_map: [MapLineType; Self::FRAME_COUNT / Self::BITS_PER_MAP_LINE],
     range_begin: FrameID,
     range_end: FrameID,
 }
-impl BitMapMamoryManager {
+impl BitMapMemoryManager {
     // この目盛管理クラスで扱える最大の物理メモリ量(byte)
     const MAX_PHYSICAL_MEMORY_BYTES: usize = 128 * 1024 * 1024 * 1024;
     // MAX_PHYSICAL_MEMORY_BYTES までの物理法則メモリを扱うために必要なフレーム数
@@ -96,7 +96,7 @@ impl BitMapMamoryManager {
         let bit_index = frame.id % Self::BITS_PER_MAP_LINE;
 
         if allocated {
-            self.alloc_map[line_idx] |= (1u64 << bit_index);
+            self.alloc_map[line_idx] |= 1u64 << bit_index;
         } else {
             self.alloc_map[line_idx] &= !(1u64 << bit_index);
         }

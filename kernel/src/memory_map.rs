@@ -19,6 +19,7 @@ pub struct MemoryDescriptor {
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u32)]
+#[allow(non_camel_case_types)] // 本家 MikanOS と名前を揃えているため
 pub enum MemoryType {
     kEfiReservedMemoryType = 0,
     kEfiLoaderCode = 1,

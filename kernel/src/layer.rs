@@ -6,7 +6,7 @@ use alloc::{boxed::Box, rc::Rc, vec::Vec};
 
 use crate::{
     frame_buffer::FrameBuffer,
-    graphics::{Rectrange, Vector2D},
+    graphics::{Rectangle, Vector2D},
     window::Window,
 };
 
@@ -142,7 +142,7 @@ impl LayerManager {
     }
 
     /// 画面上の `area` だけを再描画する (バックバッファ経由)。
-    pub fn draw_area(&mut self, area: Rectrange<i32>) {
+    pub fn draw_area(&mut self, area: Rectangle<i32>) {
         for id in &self.layer_stack {
             if let Some(layer) = self.layers.iter().find(|l| l.id == *id) {
                 if let Some(window) = &layer.window {
@@ -163,7 +163,7 @@ impl LayerManager {
     /// レイヤー `id` とその前面にあるレイヤーを、`id` の領域だけ再描画する。
     pub fn draw_id(&mut self, id: u32) {
         let mut draw = false;
-        let mut window_area = Rectrange {
+        let mut window_area = Rectangle {
             pos_lu: Vector2D { x: 0, y: 0 },
             size: Vector2D { x: 0, y: 0 },
         };

@@ -1,5 +1,6 @@
 #[repr(C)]
 #[derive(PartialEq, Clone, Copy)]
+#[allow(non_camel_case_types)] // 本家 MikanOS と名前を揃えているため
 pub enum PixelFormat {
     kPixelRGBResv8BitPerColor,
     kPixelBGRResv8BitPerColor,

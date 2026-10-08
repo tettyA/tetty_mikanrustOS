@@ -28,9 +28,8 @@ use crate::frame_buffer_config::FrameBufferConfig;
 use alloc::format;
 use alloc::rc::Rc;
 
-use crate::console::printk;
 use crate::graphics::{
-    PixelColor, PixelDraw, PixelWriter, Rectrange, Vector2D, draw_rectrange, fill_rectrange,
+    PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange,
 };
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::layer::{LAYER_MANAGER, LayerManager};
@@ -81,7 +80,7 @@ pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
         (old_pos.y + kMouseCursorHeight as i32).max(new_pos.y + kMouseCursorHeight as i32);
     LAYER_MANAGER.with(|lm| {
         if let Some(lm) = lm {
-            lm.draw_area(Rectrange {
+            lm.draw_area(Rectangle {
                 pos_lu: Vector2D { x: left, y: top },
                 size: Vector2D {
                     x: right - left,
@@ -361,7 +360,6 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     }
     let mut window_cnt = 0;
     loop {
-        unsafe {
             // compile_error!("osbook_day10c 途中 タイマ表示したい。");
             fill_rectrange(
                 &main_window.borrow_mut().writer(),
@@ -399,7 +397,6 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
                 }
                 None => x86_64::instructions::interrupts::enable_and_hlt(),
             }
-        }
     }
 }
 
