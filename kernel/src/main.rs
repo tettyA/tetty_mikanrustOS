@@ -13,9 +13,11 @@ mod memory_manager;
 mod memory_map;
 mod mousecursor;
 mod paging;
+mod pci;
 mod queue;
 mod segment;
 mod timer;
+mod usb;
 mod window;
 extern crate alloc;
 use crate::console::{Console, ConsoleWriter};
@@ -39,13 +41,6 @@ use core::arch::asm;
 use core::cell::RefCell;
 use core::panic::PanicInfo;
 use core::ptr::addr_of_mut;
-
-unsafe extern "C" {
-    fn usb_process_events();
-    fn usb_enumarate();
-    fn usb_set_mouse_obserever(observer: extern "C" fn(i8, i8));
-    fn xhc_primaryeventring_hasfront() -> bool;
-}
 
 const DESKTOP_BGCOLOR: PixelColor = PixelColor {
     r: 120,
@@ -342,9 +337,9 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     }
 
     unsafe {
-        usb_set_mouse_obserever(crate::mousecursor::moverelative);
-
-        usb_enumarate();
+        pci::ScanAllBus();
+        usb::HIDMouseDriver::set_default_observer(crate::mousecursor::MouseObserver);
+        usb::xhci::Initialize();
         asm!("sti");
     }
     printk!("Success ScanAllBus\n");
@@ -404,9 +399,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
                 asm!("sti");
                 match msg {
                     interrupts::InterruptMessage::InterruptXhci => {
-                        while xhc_primaryeventring_hasfront() {
-                            usb_process_events();
-                        }
+                        usb::xhci::ProcessEvents();
                     }
                 }
             } else {

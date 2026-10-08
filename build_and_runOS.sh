@@ -14,11 +14,11 @@ build
 
 mv Build/MikanLoaderX64/DEBUG_CLANG38/X64/Loader.efi $ORIGINAL_DIR/Loader.efi
 
-# Build C++ Wraper Library
+# Build C++ USB driver library (kernel/cpp)
 
 source $HOME/osbook/devenv/buildenv.sh
 
-cd "$ORIGINAL_DIR/kernel/"
+cd "$ORIGINAL_DIR/kernel/cpp/"
 make
 
 # Build Rust Kernel

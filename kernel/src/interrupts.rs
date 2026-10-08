@@ -1,6 +1,6 @@
 use core::ptr::{addr_of_mut, write_volatile};
 
-use crate::{queue::Queue, usb_process_events};
+use crate::queue::Queue;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 const INTERRUPTVECTOR_KXHCI: u8 = 0x40; // そう定義されている。

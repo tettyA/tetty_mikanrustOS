@@ -140,3 +140,9 @@ pub extern "C" fn moverelative(displacement_x: i8, displacement_y: i8) {
         });
     }
 }
+
+/// `usb::HIDMouseDriver` に登録するオブザーバ (本家 main.cpp の `MouseObserver` 相当)．
+/// ボタン状態は現状使わず，変位だけをカーソル移動に反映する．
+pub extern "C" fn MouseObserver(_buttons: u8, displacement_x: i8, displacement_y: i8) {
+    moverelative(displacement_x, displacement_y);
+}

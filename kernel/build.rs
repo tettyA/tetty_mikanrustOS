@@ -2,15 +2,13 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    // Cargo.tomlが存在するディレクトリ（kernel/）の絶対パスを環境変数から取得します
+    // C++ 製 USB ドライバ (kernel/cpp 以下, `make` で libmikan_usb.a を生成) をリンクする
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let lib_path = PathBuf::from(manifest_dir).join("usb_wrapper");
+    let lib_dir = PathBuf::from(manifest_dir).join("cpp");
 
-    // 絶対パスを用いて検索ディレクトリを登録します
-    println!("cargo:rustc-link-search=native={}", lib_path.display());
-    println!("cargo:rustc-link-lib=static=usb_wrapper");
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    println!("cargo:rustc-link-lib=static=mikan_usb");
 
-    // キャッシュの誤判定を防ぐため、ライブラリファイル更新時に再実行されるよう指定します
-    println!("cargo:rerun-if-changed=usb_wrapper/libusb_wrapper.a");
-    //
+    // ライブラリ更新時に再リンクさせる
+    println!("cargo:rerun-if-changed=cpp/libmikan_usb.a");
 }
