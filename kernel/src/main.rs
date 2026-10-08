@@ -257,7 +257,11 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         .set_window(mouse_window.clone())
         .move_to(Vector2D { x: 200, y: 300 })
         .id;
-    let main_window_id = layer_manager.new_layer().set_window(main_window.clone()).id;
+    let main_window_id = layer_manager
+        .new_layer()
+        .set_window(main_window.clone())
+        .set_draggable(true)
+        .id;
 
     let mut console = Console::new(
         ConsoleWriter::Window(console_window.clone()),

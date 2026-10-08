@@ -103,14 +103,16 @@ impl MouseCursor {
 
         let previous_left_pressed = (self.previous_buttons & 0x01) != 0;
         let left_pressed = (_buttons & 0x01) != 0;
-        
+
         if !previous_left_pressed && left_pressed {
             // 左ボタンが押された瞬間
             let mut target_layer_id = 0;
             LAYER_MANAGER.with(|lm| {
                 if let Some(lm) = lm {
                     if let Some(layer) = lm.find_layer_by_position(self.position, self.layer_id) {
-                        target_layer_id = layer.id;
+                        if layer.is_draggable() {
+                            target_layer_id = layer.id;
+                        }
                     }
                 }
             });

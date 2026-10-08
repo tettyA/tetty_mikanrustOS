@@ -15,6 +15,7 @@ pub struct Layer {
     z: i32,
     pub pos: Vector2D<i32>,
     window: Option<Rc<RefCell<Window>>>,
+    draggable: bool,
 }
 
 impl Layer {
@@ -24,7 +25,16 @@ impl Layer {
             z: -1,
             pos: Vector2D { x: 0, y: 0 },
             window: None,
+            draggable: false,
         }
+    }
+
+    pub fn set_draggable(&mut self, draggable: bool) -> &mut Self {
+        self.draggable = draggable;
+        self
+    }
+    pub fn is_draggable(&self) -> bool {
+        self.draggable
     }
     pub fn set_window(&mut self, window: Rc<RefCell<Window>>) -> &mut Self {
         self.window = Some(window);
