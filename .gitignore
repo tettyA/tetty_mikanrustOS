@@ -8,8 +8,9 @@
 hankaku.txt
 /tettyaOS/*
 /target/*
+/kernel/usb/*
 .vscode
 .devcontainer
 mnt/
-kernel/usb_wrapper/usb/*
+kernel/usb_wrapper/*
 tools/*
