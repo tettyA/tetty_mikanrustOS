@@ -41,13 +41,7 @@ impl Layer {
     }
     pub fn draw_to(&self, frame_buffer: &mut FrameBuffer) {
         if let Some(window) = &self.window {
-            window.borrow().draw_to(
-                frame_buffer,
-                Vector2D {
-                    x: self.pos.x.max(0),
-                    y: self.pos.y.max(0),
-                },
-            );
+            window.borrow().draw_to(frame_buffer, self.pos);
         }
     }
 }
@@ -90,14 +84,65 @@ impl LayerManager {
     }
 
     pub fn move_layer(&mut self, id: u32, new_pos: Vector2D<i32>) {
+        let mut old_area = None;
+        let mut new_area = None;
         if let Some(layer) = self.find_layer(id) {
+            if let Some(window) = &layer.window {
+                let window = window.borrow();
+                old_area = Some(Rectangle {
+                    pos_lu: layer.pos,
+                    size: Vector2D {
+                        x: window.width() as i32,
+                        y: window.height() as i32,
+                    },
+                });
+                new_area = Some(Rectangle {
+                    pos_lu: new_pos,
+                    size: Vector2D {
+                        x: window.width() as i32,
+                        y: window.height() as i32,
+                    },
+                });
+            }
             layer.move_to(new_pos);
+        }
+        // 再描画する領域を計算して描画する
+        if let Some(area) = old_area {
+            self.draw_area(area);
+        }
+        if let Some(area) = new_area {
+            self.draw_area(area);
         }
     }
 
     pub fn move_layer_rerative(&mut self, id: u32, pos_relative: Vector2D<i32>) {
+        let mut old_area = None;
+        let mut new_area = None;
         if let Some(layer) = self.find_layer(id) {
+            if let Some(window) = &layer.window {
+                let window = window.borrow();
+                old_area = Some(Rectangle {
+                    pos_lu: layer.pos,
+                    size: Vector2D {
+                        x: window.width() as i32,
+                        y: window.height() as i32,
+                    },
+                });
+                new_area = Some(Rectangle {
+                    pos_lu: layer.pos + pos_relative,
+                    size: Vector2D {
+                        x: window.width() as i32,
+                        y: window.height() as i32,
+                    },
+                });
+            }
             layer.move_relative(pos_relative);
+        }
+        if let Some(area) = old_area {
+            self.draw_area(area);
+        }
+        if let Some(area) = new_area {
+            self.draw_area(area);
         }
     }
 
@@ -129,13 +174,7 @@ impl LayerManager {
         for id in &self.layer_stack {
             if let Some(layer) = self.layers.iter().find(|l| l.id == *id) {
                 if let Some(window) = &layer.window {
-                    window.borrow().draw_to(
-                        &mut self.screen,
-                        Vector2D {
-                            x: layer.pos.x.max(0),
-                            y: layer.pos.y.max(0),
-                        },
-                    );
+                    window.borrow().draw_to(&mut self.screen, layer.pos);
                 }
             }
         }
@@ -146,14 +185,9 @@ impl LayerManager {
         for id in &self.layer_stack {
             if let Some(layer) = self.layers.iter().find(|l| l.id == *id) {
                 if let Some(window) = &layer.window {
-                    window.borrow().draw_to_area(
-                        &mut self.back_buffer,
-                        Vector2D {
-                            x: layer.pos.x.max(0),
-                            y: layer.pos.y.max(0),
-                        },
-                        area,
-                    );
+                    window
+                        .borrow()
+                        .draw_to_area(&mut self.back_buffer, layer.pos, area);
                 }
             }
         }
@@ -184,14 +218,9 @@ impl LayerManager {
             }
             if draw {
                 if let Some(window) = &layer.window {
-                    window.borrow().draw_to_area(
-                        &mut self.back_buffer,
-                        Vector2D {
-                            x: layer.pos.x.max(0),
-                            y: layer.pos.y.max(0),
-                        },
-                        window_area,
-                    );
+                    window
+                        .borrow()
+                        .draw_to_area(&mut self.back_buffer, layer.pos, window_area);
                 }
             }
         }
