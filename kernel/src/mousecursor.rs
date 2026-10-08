@@ -1,9 +1,11 @@
 use crate::global::Global;
-
+use crate::{console, printk};
 use crate::{
     graphics::{PixelColor, PixelDraw, Vector2D},
-    layer::LAYER_MANAGER, timer,
+    layer::LAYER_MANAGER,
+    timer,
 };
+
 pub const kMouseCursorWidth: usize = 15;
 pub const kMouseCursorHeight: usize = 24;
 pub const MOUSE_CURSOR_TRANSPARENT_COLOR: PixelColor = PixelColor {
@@ -41,10 +43,12 @@ const MOUSE_CURSOR_SHAPE: [&'static str; kMouseCursorHeight] = [
 pub struct MouseCursor {
     initialized: bool,
     layer_id: u32,
+    drag_layer_id: u32,
     redraw: Option<fn()>,
     redraw_area: Option<fn(Vector2D<i32>, Vector2D<i32>)>,
     position: Vector2D<i32>,
     screen_size: Vector2D<usize>,
+    previous_buttons: u8,
 }
 
 impl MouseCursor {
@@ -52,9 +56,11 @@ impl MouseCursor {
         Self {
             initialized: false,
             layer_id: 0,
+            drag_layer_id: 0,
             redraw: None,
             redraw_area: None,
             position: Vector2D { x: 200, y: 300 },
+            previous_buttons: 0,
             screen_size: Vector2D { x: 100, y: 100 },
         }
     }
@@ -72,25 +78,21 @@ impl MouseCursor {
         self.redraw_area = Some(redraw_area);
     }
 
-    pub unsafe fn move_relative(&mut self, displacement: Vector2D<i32>) {
+    pub unsafe fn move_relative(&mut self, _buttons: u8, displacement: Vector2D<i32>) {
         if !self.initialized {
             return;
         }
 
         let old_position = self.position;
         self.position += displacement;
-        if self.position.x < 0 {
-            self.position.x = 0;
-        }
-        if self.position.y < 0 {
-            self.position.y = 0;
-        }
-        if self.position.x >= self.screen_size.x as i32 {
-            self.position.x = self.screen_size.x as i32 - 1;
-        }
-        if self.position.y >= self.screen_size.y as i32 {
-            self.position.y = self.screen_size.y as i32 - 1;
-        }
+
+        self.position.x = self.position.x.clamp(0, self.screen_size.x as i32 - 1);
+        self.position.y = self.position.y.clamp(0, self.screen_size.y as i32 - 1);
+
+        let posdiff = [
+            (self.position.x - old_position.x),
+            (self.position.y - old_position.y),
+        ];
 
         timer::start_lapic_timer();
         LAYER_MANAGER.with(|lm| {
@@ -98,13 +100,56 @@ impl MouseCursor {
                 lm.move_layer(self.layer_id, self.position);
             }
         });
+
+        let previous_left_pressed = (self.previous_buttons & 0x01) != 0;
+        let left_pressed = (_buttons & 0x01) != 0;
+        printk!("mouse moved\n");
+        if !previous_left_pressed && left_pressed {
+            // 左ボタンが押された瞬間
+            printk!(
+                "!!!!!!!!!!!!!!!!!MouseObserver: left pressed, pos = ({}, {})\n",
+                self.position.x,
+                self.position.y
+            );
+            let mut target_layer_id = 0;
+            LAYER_MANAGER.with(|lm| {
+                if let Some(lm) = lm {
+                    if let Some(layer) = lm.find_layer_by_position(self.position, self.layer_id) {
+                        target_layer_id = layer.id;
+                    }
+                }
+            });
+            if target_layer_id > 0 {
+                self.drag_layer_id = target_layer_id;
+                printk!(
+                    "MouseObserver: layer_id = {}, pos = ({}, {})\n",
+                    self.drag_layer_id,
+                    self.position.x,
+                    self.position.y
+                );
+            }
+        } else if previous_left_pressed && left_pressed {
+            // 左ボタンが押されている間
+            if self.drag_layer_id > 0 {
+                LAYER_MANAGER.with(|lm| {
+                    if let Some(lm) = lm {
+                        lm.move_layer_rerative(self.drag_layer_id, Vector2D {
+                            x: posdiff[0],
+                            y: posdiff[1],
+                        });
+                    }
+                });
+            }
+        } else if previous_left_pressed && !left_pressed {
+            // 左ボタンが離された瞬間
+            self.drag_layer_id = 0;
+        }
+
+        self.previous_buttons = _buttons;
+
         if let Some(redraw_area) = self.redraw_area {
             redraw_area(old_position, self.position);
         }
-
-        /*  let elapsed = timer::lapic_timer_elapsed();
-        timer::start_lapic_timer();
-        printk!("MouseObserver: elapsed = {}\n", elapsed);*/
     }
 
     pub fn draw<W: PixelDraw>(&self, writer: &W) {
@@ -128,17 +173,17 @@ impl MouseCursor {
     }
 }
 pub static MOUSE_CURSOR: Global<MouseCursor> = Global::new(MouseCursor::new());
-pub extern "C" fn moverelative(displacement_x: i8, displacement_y: i8) {
-    MOUSE_CURSOR.with(|cursor| unsafe {
-        cursor.move_relative(Vector2D {
-            x: displacement_x as i32,
-            y: displacement_y as i32,
-        });
-    });
-}
 
 /// `usb::HIDMouseDriver` に登録するオブザーバ (本家 main.cpp の `MouseObserver` 相当)．
 /// ボタン状態は現状使わず，変位だけをカーソル移動に反映する．
 pub extern "C" fn MouseObserver(_buttons: u8, displacement_x: i8, displacement_y: i8) {
-    moverelative(displacement_x, displacement_y);
+    MOUSE_CURSOR.with(|cursor| unsafe {
+        cursor.move_relative(
+            _buttons,
+            Vector2D {
+                x: displacement_x as i32,
+                y: displacement_y as i32,
+            },
+        );
+    });
 }

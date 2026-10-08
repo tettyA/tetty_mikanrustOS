@@ -200,7 +200,45 @@ impl LayerManager {
         }
     }
 
+    pub fn find_layer_by_position(
+        &mut self,
+        pos: Vector2D<i32>,
+        exclude_id: u32,
+    ) -> Option<&mut Layer> {
+        for i in (0..self.layer_stack.len()).rev() {
+            let id = self.layer_stack[i];
+            if let Some(layer) = self.find_layer(id) {
+                let hit = {
+                    if let Some(window) = &layer.window {
+                        let window = window.borrow();
+                        let window_area = Rectangle {
+                            pos_lu: layer.pos,
+                            size: Vector2D {
+                                x: window.width() as i32,
+                                y: window.height() as i32,
+                            },
+                        };
+                        window_area.pos_lu.x <= pos.x
+                            && pos.x < window_area.pos_lu.x + window_area.size.x
+                            && window_area.pos_lu.y <= pos.y
+                            && pos.y < window_area.pos_lu.y + window_area.size.y
+                            && (id != exclude_id)
+                    } else {
+                        false
+                    }
+                };
+                if hit {
+                    return Some(layer);
+                }
+            }
+        }
+        None
+    }
+
     fn find_layer(&mut self, id: u32) -> Option<&mut Layer> {
-        self.layers.iter_mut().find(|l| l.id == id).map(|l| l.as_mut())
+        self.layers
+            .iter_mut()
+            .find(|l| l.id == id)
+            .map(|l| l.as_mut())
     }
 }

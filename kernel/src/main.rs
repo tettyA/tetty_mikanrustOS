@@ -28,9 +28,7 @@ use crate::frame_buffer_config::FrameBufferConfig;
 use alloc::format;
 use alloc::rc::Rc;
 
-use crate::graphics::{
-    PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange,
-};
+use crate::graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange};
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::layer::{LAYER_MANAGER, LayerManager};
 use crate::memory_manager::{BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE};
@@ -76,8 +74,7 @@ pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
     let left = old_pos.x.min(new_pos.x);
     let top = old_pos.y.min(new_pos.y);
     let right = (old_pos.x + kMouseCursorWidth as i32).max(new_pos.x + kMouseCursorWidth as i32);
-    let bottom =
-        (old_pos.y + kMouseCursorHeight as i32).max(new_pos.y + kMouseCursorHeight as i32);
+    let bottom = (old_pos.y + kMouseCursorHeight as i32).max(new_pos.y + kMouseCursorHeight as i32);
     LAYER_MANAGER.with(|lm| {
         if let Some(lm) = lm {
             lm.draw_area(Rectangle {
@@ -301,32 +298,32 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
 
     unsafe {
         MOUSE_CURSOR.with(|cursor| {
-        cursor.init(
-            mouse_layer_id,
-            Vector2D {
-                x: frame_width,
-                y: frame_height,
-            },
-            redraw_layers_all,
-            redraw_mouse_area,
-        );
-        mouse_window
-            .borrow_mut()
-            .set_transparent_color(Some(crate::mousecursor::MOUSE_CURSOR_TRANSPARENT_COLOR));
-        {
-            let mut mouse_window_ref = mouse_window.borrow_mut();
-            let mouse_writer = mouse_window_ref.writer();
-            fill_rectrange(
-                &mouse_writer,
-                &Vector2D { x: 0, y: 0 },
-                &Vector2D {
-                    x: kMouseCursorWidth,
-                    y: kMouseCursorHeight,
+            cursor.init(
+                mouse_layer_id,
+                Vector2D {
+                    x: frame_width,
+                    y: frame_height,
                 },
-                &crate::mousecursor::MOUSE_CURSOR_TRANSPARENT_COLOR,
+                redraw_layers_all,
+                redraw_mouse_area,
             );
-            cursor.draw(&mouse_writer);
-        }
+            mouse_window
+                .borrow_mut()
+                .set_transparent_color(Some(crate::mousecursor::MOUSE_CURSOR_TRANSPARENT_COLOR));
+            {
+                let mut mouse_window_ref = mouse_window.borrow_mut();
+                let mouse_writer = mouse_window_ref.writer();
+                fill_rectrange(
+                    &mouse_writer,
+                    &Vector2D { x: 0, y: 0 },
+                    &Vector2D {
+                        x: kMouseCursorWidth,
+                        y: kMouseCursorHeight,
+                    },
+                    &crate::mousecursor::MOUSE_CURSOR_TRANSPARENT_COLOR,
+                );
+                cursor.draw(&mouse_writer);
+            }
         });
         redraw_layers_all();
     }
@@ -360,43 +357,43 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     }
     let mut window_cnt = 0;
     loop {
-            // compile_error!("osbook_day10c 途中 タイマ表示したい。");
-            fill_rectrange(
-                &main_window.borrow_mut().writer(),
-                &Vector2D {
-                    x: 24 as usize,
-                    y: 28 as usize,
-                },
-                &Vector2D {
-                    x: 8 * 10 as usize,
-                    y: 16 as usize,
-                },
-                &PixelColor {
-                    r: 0xc6,
-                    g: 0xc6,
-                    b: 0xc6,
-                },
-            );
-            write_string(
-                &main_window.borrow_mut().writer(),
-                24,
-                28,
-                &format!("{window_cnt}"),
-                &PixelColor { r: 0, g: 0, b: 0 },
-            );
-            window_cnt += 1;
-            redraw_layers_id(main_window_id);
-            // キューの確認と hlt の間に割り込みが入ると取りこぼすため、
-            // 割り込み禁止のまま確認し、無ければ `sti; hlt` (sti 直後の1命令は割り込まれない) で待つ。
-            x86_64::instructions::interrupts::disable();
-            let msg = INTERRUPTMESSAGE_QUEUE.with(|q| q.pop());
-            match msg {
-                Some(interrupts::InterruptMessage::InterruptXhci) => {
-                    x86_64::instructions::interrupts::enable();
-                    usb::xhci::ProcessEvents();
-                }
-                None => x86_64::instructions::interrupts::enable_and_hlt(),
+        // compile_error!("osbook_day10c 途中 タイマ表示したい。");
+        fill_rectrange(
+            &main_window.borrow_mut().writer(),
+            &Vector2D {
+                x: 24 as usize,
+                y: 28 as usize,
+            },
+            &Vector2D {
+                x: 8 * 10 as usize,
+                y: 16 as usize,
+            },
+            &PixelColor {
+                r: 0xc6,
+                g: 0xc6,
+                b: 0xc6,
+            },
+        );
+        write_string(
+            &main_window.borrow_mut().writer(),
+            24,
+            28,
+            &format!("{window_cnt}"),
+            &PixelColor { r: 0, g: 0, b: 0 },
+        );
+        window_cnt += 1;
+        redraw_layers_id(main_window_id);
+        // キューの確認と hlt の間に割り込みが入ると取りこぼすため、
+        // 割り込み禁止のまま確認し、無ければ `sti; hlt` (sti 直後の1命令は割り込まれない) で待つ。
+        x86_64::instructions::interrupts::disable();
+        let msg = INTERRUPTMESSAGE_QUEUE.with(|q| q.pop());
+        match msg {
+            Some(interrupts::InterruptMessage::InterruptXhci) => {
+                x86_64::instructions::interrupts::enable();
+                usb::xhci::ProcessEvents();
             }
+            None => x86_64::instructions::interrupts::enable_and_hlt(),
+        }
     }
 }
 
