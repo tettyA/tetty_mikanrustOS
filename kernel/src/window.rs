@@ -150,6 +150,11 @@ impl Window {
     }
 
     pub fn draw_to_area(&self, dst: &mut FrameBuffer, pos: Vector2D<i32>, area: Rectangle<i32>) {
+        if self.transparent_color.is_none() {
+            dst.copy_window_area(pos, &area, &self.shadow_buffer);
+            return;
+        }
+
         let start_x = area.pos_lu.x.max(pos.x).max(0);
         let start_y = area.pos_lu.y.max(pos.y).max(0);
         let end_x = (area.pos_lu.x + area.size.x).min(pos.x + self.width as i32);

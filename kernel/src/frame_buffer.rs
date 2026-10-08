@@ -135,6 +135,51 @@ impl FrameBuffer {
             );
         }
     }
+
+    pub fn copy_window_area(&mut self, pos: Vector2D<i32>, area: &Rectangle<i32>, src: &FrameBuffer) {
+        let bytes_per_pixel = 4;
+
+        let dst_width = self.config.horizontal_resolution;
+        let dst_height = self.config.vertical_resolution;
+        let src_width = src.config.horizontal_resolution;
+        let src_height = src.config.vertical_resolution;
+
+        let start_x = area.pos_lu.x.max(pos.x).max(0);
+        let start_y = area.pos_lu.y.max(pos.y).max(0);
+        let end_x = (area.pos_lu.x + area.size.x).min(pos.x + src_width as i32).min(dst_width as i32);
+        let end_y = (area.pos_lu.y + area.size.y).min(pos.y + src_height as i32).min(dst_height as i32);
+
+        if start_x >= end_x || start_y >= end_y {
+            return;
+        }
+
+        let copy_width = (end_x - start_x) as u32;
+        let copy_height = (end_y - start_y) as u32;
+
+        let src_start_x = (start_x - pos.x) as u32;
+        let src_start_y = (start_y - pos.y) as u32;
+        let dst_start_x = start_x as u32;
+        let dst_start_y = start_y as u32;
+
+        let dst_pixels_per_scan_line = self.config.pixels_per_scan_line;
+        let src_pixels_per_scan_line = src.config.pixels_per_scan_line;
+
+        let dst_slice = self.get_slice_mut();
+        let src_slice = src.get_slice();
+
+        for y in 0..copy_height {
+            let current_dst_y = dst_start_y + y;
+            let current_src_y = src_start_y + y;
+
+            let dst_offset = (current_dst_y * dst_pixels_per_scan_line + dst_start_x) * bytes_per_pixel;
+            let src_offset = (current_src_y * src_pixels_per_scan_line + src_start_x) * bytes_per_pixel;
+            let line_bytes = copy_width * bytes_per_pixel;
+
+            dst_slice[dst_offset as usize..(dst_offset + line_bytes) as usize].copy_from_slice(
+                &src_slice[src_offset as usize..(src_offset + line_bytes) as usize],
+            );
+        }
+    }
     pub fn r#move(&mut self, dst_pos: Vector2D<i32>, src: &Rectangle<i32>) {
         let bytes_per_pixel = bytes_per_pixel(&self.config.pixel_format) as usize;
         let bytes_per_scan_line = bytes_per_scan_line(&self.config) as usize;

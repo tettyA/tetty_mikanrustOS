@@ -103,14 +103,9 @@ impl MouseCursor {
 
         let previous_left_pressed = (self.previous_buttons & 0x01) != 0;
         let left_pressed = (_buttons & 0x01) != 0;
-        printk!("mouse moved\n");
+        
         if !previous_left_pressed && left_pressed {
             // 左ボタンが押された瞬間
-            printk!(
-                "!!!!!!!!!!!!!!!!!MouseObserver: left pressed, pos = ({}, {})\n",
-                self.position.x,
-                self.position.y
-            );
             let mut target_layer_id = 0;
             LAYER_MANAGER.with(|lm| {
                 if let Some(lm) = lm {
@@ -133,10 +128,13 @@ impl MouseCursor {
             if self.drag_layer_id > 0 {
                 LAYER_MANAGER.with(|lm| {
                     if let Some(lm) = lm {
-                        lm.move_layer_rerative(self.drag_layer_id, Vector2D {
-                            x: posdiff[0],
-                            y: posdiff[1],
-                        });
+                        lm.move_layer_rerative(
+                            self.drag_layer_id,
+                            Vector2D {
+                                x: posdiff[0],
+                                y: posdiff[1],
+                            },
+                        );
                     }
                 });
             }
