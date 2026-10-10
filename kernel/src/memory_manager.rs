@@ -1,4 +1,5 @@
 use crate::global::Global;
+use crate::memory_map::{MemoryDescriptor, MemoryMap};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct FrameID {
@@ -101,4 +102,42 @@ impl BitMapMemoryManager {
             self.alloc_map[line_idx] &= !(1u64 << bit_index);
         }
     }
+}
+
+pub fn initialize_memory_manager(memory_map: &MemoryMap) {
+    MEMORY_MANAGER.with(|memory_manager| unsafe {
+        let mut available_end = 0 as usize;
+        for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
+            let ptr = memory_map
+                .buffer
+                .add((i * memory_map.descriptor_size) as usize);
+            let desc: &MemoryDescriptor = &*(ptr as *const MemoryDescriptor);
+            if available_end < desc.physical_start as usize {
+                memory_manager.mark_allocated(
+                    FrameID {
+                        id: available_end as usize / BYTES_PER_FRAME,
+                    },
+                    (desc.physical_start as usize - available_end as usize) / BYTES_PER_FRAME,
+                );
+            }
+            let physical_end =
+                desc.physical_start as usize + desc.number_of_pages as usize * UEFI_PAGE_SIZE;
+            if desc.memory_type().is_available() {
+                available_end = physical_end;
+            } else {
+                memory_manager.mark_allocated(
+                    FrameID {
+                        id: desc.physical_start as usize / BYTES_PER_FRAME,
+                    },
+                    desc.number_of_pages as usize * UEFI_PAGE_SIZE / BYTES_PER_FRAME,
+                );
+            }
+        }
+        memory_manager.set_memory_range(
+            FrameID { id: 0 },
+            FrameID {
+                id: available_end / BYTES_PER_FRAME,
+            },
+        );
+    });
 }

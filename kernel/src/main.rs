@@ -21,17 +21,19 @@ mod timer;
 mod usb;
 mod window;
 extern crate alloc;
-use crate::console::{Console, ConsoleWriter};
 use crate::font::write_string;
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
+use crate::pci::initialize_pci;
 use alloc::format;
 use alloc::rc::Rc;
 
 use crate::graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange};
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::layer::{LAYER_MANAGER, LayerManager};
-use crate::memory_manager::{BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE};
+use crate::memory_manager::{
+    BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE, initialize_memory_manager,
+};
 use crate::memory_map::{MemoryDescriptor, MemoryMap};
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
 use crate::window::{Window, draw_window};
@@ -174,43 +176,7 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     segment::init_segment();
     paging::setup_identify_page_table();
 
-    //compile_error!("メモリマップ実装してない(8.16)");
-    MEMORY_MANAGER.with(|memory_manager| unsafe {
-        let mut available_end = 0 as usize;
-        for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
-            let ptr = memory_map
-                .buffer
-                .add((i * memory_map.descriptor_size) as usize);
-            let desc: &MemoryDescriptor = &*(ptr as *const MemoryDescriptor);
-            if available_end < desc.physical_start as usize {
-                memory_manager.mark_allocated(
-                    FrameID {
-                        id: available_end as usize / BYTES_PER_FRAME,
-                    },
-                    (desc.physical_start as usize - available_end as usize) / BYTES_PER_FRAME,
-                );
-            }
-            let physical_end =
-                desc.physical_start as usize + desc.number_of_pages as usize * UEFI_PAGE_SIZE;
-            if desc.memory_type().is_available() {
-                available_end = physical_end;
-            } else {
-                memory_manager.mark_allocated(
-                    FrameID {
-                        id: desc.physical_start as usize / BYTES_PER_FRAME,
-                    },
-                    desc.number_of_pages as usize * UEFI_PAGE_SIZE / BYTES_PER_FRAME,
-                );
-            }
-        }
-        memory_manager.set_memory_range(
-            FrameID { id: 0 },
-            FrameID {
-                id: available_end / BYTES_PER_FRAME,
-            },
-        );
-    });
-
+    initialize_memory_manager(&memory_map);
     allocator::init_heap();
     timer::initialize_lapic_timer();
     init_idt();
@@ -225,8 +191,6 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
 
     draw_desktop(&bg_writer, frame_width, frame_height);
 
-    // entrypoint
-
     let bg_window = Rc::new(RefCell::new(bg_window));
     let mouse_window = Rc::new(RefCell::new(Window::new(
         kMouseCursorWidth,
@@ -239,12 +203,6 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         frame_buffer_config.pixel_format,
     )));
     draw_window(&main_window.borrow_mut().writer(), "Hello window");
-
-    let console_window = Rc::new(RefCell::new(Window::new(
-        Console::COLUMN_NUM * 8,
-        Console::ROW_NUM * 16,
-        frame_buffer_config.pixel_format,
-    )));
 
     let mut layer_manager: LayerManager = LayerManager::new(frame_buffer);
     let bg_layer_id = layer_manager
@@ -263,40 +221,12 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         .set_draggable(true)
         .id;
 
-    let mut console = Console::new(
-        ConsoleWriter::Window(console_window.clone()),
-        DESKTOP_FGCOLOR,
-        DESKTOP_BGCOLOR,
-    );
-    {
-        let mut cw_ref = console_window.borrow_mut();
-        let cw_writer = cw_ref.writer();
-        fill_rectrange(
-            &cw_writer,
-            &Vector2D { x: 0, y: 0 },
-            &Vector2D {
-                x: Console::COLUMN_NUM * 8,
-                y: Console::ROW_NUM * 16,
-            },
-            &DESKTOP_BGCOLOR,
-        );
-    }
-    console.set_layerid(
-        layer_manager
-            .new_layer()
-            .set_window(console_window)
-            .move_to(Vector2D { x: 0, y: 0 })
-            .id,
-    );
-    console.set_redraw(redraw_layers_id);
     layer_manager.up_down(bg_layer_id, 0);
     layer_manager.up_down(mouse_layer_id, 3);
     layer_manager.up_down(main_window_id, 2);
-    layer_manager.up_down(console.get_layer_id(), 1);
 
     LAYER_MANAGER.with(|lm| *lm = Some(layer_manager));
     redraw_layers_all();
-    console::init(console);
 
     printk!("Welcome to tettya OS!!\n");
 
@@ -332,36 +262,10 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         redraw_layers_all();
     }
 
-    unsafe {
-        pci::ScanAllBus();
-        usb::HIDMouseDriver::set_default_observer(crate::mousecursor::MouseObserver);
-        usb::xhci::Initialize();
-        asm!("sti");
-    }
-    printk!("Success ScanAllBus\n");
+    initialize_pci();
 
-    printk!("memory_map: {:p}\n", &memory_map);
-    for i in 0..(memory_map.map_size / memory_map.descriptor_size) {
-        let desc: &MemoryDescriptor = unsafe {
-            let ptr = memory_map
-                .buffer
-                .add((i * memory_map.descriptor_size) as usize);
-            &*(ptr as *const MemoryDescriptor)
-        };
-        if desc.memory_type().is_available() {
-            printk!(
-                "type = {:?}, phys = {:08x} - {:08x}, pages = {}, attr = {:x}\n",
-                desc.memory_type(),
-                desc.physical_start,
-                desc.physical_start + desc.number_of_pages * 4096 - 1,
-                desc.number_of_pages,
-                desc.attribute
-            );
-        }
-    }
     let mut window_cnt = 0;
     loop {
-        // compile_error!("osbook_day10c 途中 タイマ表示したい。");
         fill_rectrange(
             &main_window.borrow_mut().writer(),
             &Vector2D {

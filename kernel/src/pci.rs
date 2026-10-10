@@ -13,8 +13,10 @@
 //! ```
 #![allow(non_snake_case, dead_code)]
 
-use crate::usb::Error;
+use core::arch::asm;
 
+use crate::usb;
+use crate::usb::Error;
 /// `pci::ClassCode` : PCI デバイスのクラスコード．
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -81,4 +83,13 @@ pub fn ReadConfReg(dev: &Device, reg_addr: u8) -> u32 {
 /// `pci::WriteConfReg(dev, reg_addr, value)` : コンフィグレーション空間の 32 ビットレジスタに書く．
 pub fn WriteConfReg(dev: &Device, reg_addr: u8, value: u32) {
     unsafe { pci_WriteConfReg(dev, reg_addr, value) }
+}
+
+pub fn initialize_pci() {
+    unsafe {
+        ScanAllBus();
+        usb::HIDMouseDriver::set_default_observer(crate::mousecursor::MouseObserver);
+        usb::xhci::Initialize();
+        asm!("sti");
+    }
 }
