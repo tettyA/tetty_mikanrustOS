@@ -94,7 +94,6 @@ impl MouseCursor {
             (self.position.y - old_position.y),
         ];
 
-        timer::start_lapic_timer();
         LAYER_MANAGER.with(|lm| {
             if let Some(lm) = lm {
                 lm.move_layer(self.layer_id, self.position);

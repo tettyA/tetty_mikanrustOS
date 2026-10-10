@@ -12,6 +12,7 @@ mod interrupts;
 mod layer;
 mod memory_manager;
 mod memory_map;
+mod message;
 mod mousecursor;
 mod paging;
 mod pci;
@@ -24,6 +25,7 @@ extern crate alloc;
 use crate::font::write_string;
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
+use crate::message::Message;
 use crate::pci::initialize_pci;
 use crate::timer::TIMER_MANAGER;
 use alloc::format;
@@ -180,7 +182,6 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
 
     initialize_memory_manager(&memory_map);
     allocator::init_heap();
-    timer::initialize_lapic_timer();
     init_idt();
 
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
@@ -301,14 +302,16 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
 
     initialize_pci();
 
-    TIMER_MANAGER.with(|tm| *tm = Some(timer::TimerManager::new()));
+    timer::initialize_lapic_timer(&INTERRUPTMESSAGE_QUEUE);
 
+    TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(200, 2)));
+
+    TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(700, -1)));
     loop {
         unsafe { asm!("cli") };
         let tick = TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()));
         unsafe { asm!("sti") };
 
-        printk!("tick: {}\n", tick);
         fill_rectrange(
             &main_window.borrow_mut().writer(),
             &Vector2D {
@@ -341,13 +344,21 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         }
         let msg = INTERRUPTMESSAGE_QUEUE.with(|q| q.pop());
         match msg {
-            Some(interrupts::InterruptMessage::InterruptXhci) => {
+            Some(Message::InterruptXhci) => {
                 x86_64::instructions::interrupts::enable();
                 usb::xhci::ProcessEvents();
             }
-            Some(interrupts::InterruptMessage::InterruptLapicTimer) => {
+            Some(Message::InterruptLapicTimer { timeout, value }) => {
                 x86_64::instructions::interrupts::enable();
-                printk!("lapic timer interrupt\n");
+                printk!("Timer: timeout={}, value={}\n", timeout, value);
+
+                if value > 0 {
+                    TIMER_MANAGER.with(|tm| {
+                        tm.as_mut()
+                            .unwrap()
+                            .add_timer(&timer::Timer::new(tick + 200, value + 1))
+                    });
+                }
             }
             None => x86_64::instructions::interrupts::enable_and_hlt(),
         }

@@ -1,25 +1,21 @@
 use crate::{global::Global, timer::lapic_timer_on_interrupt};
 use core::ptr::write_volatile;
 
+use crate::message::Message;
 use crate::queue::Queue;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-
 //const INTERRUPTVECTOR_KXHCI: u8 = 0x40; // そう定義されている。
 pub enum InterruptVector {
     XHCI = 0x40,
     LAPICTimer = 0x41,
 }
-#[derive(Clone, Copy)]
-pub enum InterruptMessage {
-    InterruptXhci,
-    InterruptLapicTimer,
-}
+
 // 割り込み記述子表
 static IDT: Global<InterruptDescriptorTable> = Global::new(InterruptDescriptorTable::new());
 
 extern "x86-interrupt" fn interrupt_handler_xhchi_mouse_cursor(_stack_frame: InterruptStackFrame) {
     // キューが満杯なら取りこぼす (xHCI イベントは次の割り込みでまとめて処理される)
-    let _ = INTERRUPTMESSAGE_QUEUE.with(|q| q.push(InterruptMessage::InterruptXhci));
+    let _ = INTERRUPTMESSAGE_QUEUE.with(|q| q.push(Message::InterruptXhci));
     notify_end_of_interrupt();
 }
 
@@ -42,4 +38,4 @@ pub fn init_idt() {
     });
 }
 
-pub static INTERRUPTMESSAGE_QUEUE: Global<Queue<InterruptMessage>> = Global::new(Queue::new());
+pub static INTERRUPTMESSAGE_QUEUE: Global<Queue<Message>> = Global::new(Queue::new());
