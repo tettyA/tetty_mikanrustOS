@@ -28,6 +28,7 @@ use crate::pci::initialize_pci;
 use alloc::format;
 use alloc::rc::Rc;
 
+use crate::console::{Console, ConsoleWriter};
 use crate::graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange};
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::layer::{LAYER_MANAGER, LayerManager};
@@ -204,6 +205,12 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
     )));
     draw_window(&main_window.borrow_mut().writer(), "Hello window");
 
+    let console_window = Rc::new(RefCell::new(Window::new(
+        Console::COLUMN_NUM * 8,
+        Console::ROW_NUM * 16,
+        frame_buffer_config.pixel_format,
+    )));
+
     let mut layer_manager: LayerManager = LayerManager::new(frame_buffer);
     let bg_layer_id = layer_manager
         .new_layer()
@@ -221,12 +228,41 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
         .set_draggable(true)
         .id;
 
+    let mut console = Console::new(
+        ConsoleWriter::Window(console_window.clone()),
+        DESKTOP_FGCOLOR,
+        DESKTOP_BGCOLOR,
+    );
+    {
+        let mut cw_ref = console_window.borrow_mut();
+        let cw_writer = cw_ref.writer();
+        fill_rectrange(
+            &cw_writer,
+            &Vector2D { x: 0, y: 0 },
+            &Vector2D {
+                x: Console::COLUMN_NUM * 8,
+                y: Console::ROW_NUM * 16,
+            },
+            &DESKTOP_BGCOLOR,
+        );
+    }
+    console.set_layerid(
+        layer_manager
+            .new_layer()
+            .set_window(console_window)
+            .move_to(Vector2D { x: 0, y: 0 })
+            .id,
+    );
+    console.set_redraw(redraw_layers_id);
+
     layer_manager.up_down(bg_layer_id, 0);
     layer_manager.up_down(mouse_layer_id, 3);
     layer_manager.up_down(main_window_id, 2);
+    layer_manager.up_down(console.get_layer_id(), 1);
 
     LAYER_MANAGER.with(|lm| *lm = Some(layer_manager));
     redraw_layers_all();
+    console::init(console);
 
     printk!("Welcome to tettya OS!!\n");
 
@@ -299,6 +335,10 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             Some(interrupts::InterruptMessage::InterruptXhci) => {
                 x86_64::instructions::interrupts::enable();
                 usb::xhci::ProcessEvents();
+            }
+            Some(interrupts::InterruptMessage::InterruptLapicTimer) => {
+                x86_64::instructions::interrupts::enable();
+                printk!("lapic timer interrupt\n");
             }
             None => x86_64::instructions::interrupts::enable_and_hlt(),
         }
