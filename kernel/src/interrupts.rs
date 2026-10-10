@@ -1,4 +1,4 @@
-use crate::global::Global;
+use crate::{global::Global, timer::lapic_timer_on_interrupt};
 use core::ptr::write_volatile;
 
 use crate::queue::Queue;
@@ -24,8 +24,7 @@ extern "x86-interrupt" fn interrupt_handler_xhchi_mouse_cursor(_stack_frame: Int
 }
 
 extern "x86-interrupt" fn interrupt_handler_lapic_timer(_stack_frame: InterruptStackFrame) {
-    // キューが満杯なら取りこぼす (xHCI イベントは次の割り込みでまとめて処理される)
-    let _ = INTERRUPTMESSAGE_QUEUE.with(|q| q.push(InterruptMessage::InterruptLapicTimer));
+    lapic_timer_on_interrupt();
     notify_end_of_interrupt();
 }
 fn notify_end_of_interrupt() {

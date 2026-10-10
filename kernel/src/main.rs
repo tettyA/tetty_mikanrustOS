@@ -25,6 +25,7 @@ use crate::font::write_string;
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::pci::initialize_pci;
+use crate::timer::TIMER_MANAGER;
 use alloc::format;
 use alloc::rc::Rc;
 
@@ -300,8 +301,14 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
 
     initialize_pci();
 
-    let mut window_cnt = 0;
+    TIMER_MANAGER.with(|tm| *tm = Some(timer::TimerManager::new()));
+
     loop {
+        unsafe { asm!("cli") };
+        let tick = TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()));
+        unsafe { asm!("sti") };
+
+        printk!("tick: {}\n", tick);
         fill_rectrange(
             &main_window.borrow_mut().writer(),
             &Vector2D {
@@ -322,14 +329,16 @@ fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &Memo
             &main_window.borrow_mut().writer(),
             24,
             28,
-            &format!("{window_cnt}"),
-            &PixelColor { r: 0, g: 0, b: 0 },
+            &format!("{:>10}", tick),
+            &PixelColor { r: 0, g: 140, b: 0 },
         );
-        window_cnt += 1;
         redraw_layers_id(main_window_id);
-        // キューの確認と hlt の間に割り込みが入ると取りこぼすため、
-        // 割り込み禁止のまま確認し、無ければ `sti; hlt` (sti 直後の1命令は割り込まれない) で待つ。
+
         x86_64::instructions::interrupts::disable();
+        if INTERRUPTMESSAGE_QUEUE.with(|q| q.count() == 0) {
+            x86_64::instructions::interrupts::enable_and_hlt();
+            continue;
+        }
         let msg = INTERRUPTMESSAGE_QUEUE.with(|q| q.pop());
         match msg {
             Some(interrupts::InterruptMessage::InterruptXhci) => {
