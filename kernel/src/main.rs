@@ -1,6 +1,7 @@
 #![no_main] // disable all Rust-level entry points
 #![no_std] // don't lonk the Rust standart library
 #![feature(abi_x86_interrupt)] // Allows extern "x86-interrupt" fn(). 
+mod acpi;
 mod allocator;
 mod console;
 mod font;
@@ -22,25 +23,23 @@ mod timer;
 mod usb;
 mod window;
 extern crate alloc;
+use crate::acpi::Rsdp;
+use crate::console::{Console, ConsoleWriter};
 use crate::font::write_string;
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
-use crate::message::Message;
-use crate::pci::initialize_pci;
-use crate::timer::TIMER_MANAGER;
-use alloc::format;
-use alloc::rc::Rc;
-
-use crate::console::{Console, ConsoleWriter};
 use crate::graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange};
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::layer::{LAYER_MANAGER, LayerManager};
-use crate::memory_manager::{
-    BYTES_PER_FRAME, FrameID, MEMORY_MANAGER, UEFI_PAGE_SIZE, initialize_memory_manager,
-};
-use crate::memory_map::{MemoryDescriptor, MemoryMap};
+use crate::memory_manager::initialize_memory_manager;
+use crate::memory_map::MemoryMap;
+use crate::message::Message;
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
+use crate::pci::initialize_pci;
+use crate::timer::TIMER_MANAGER;
 use crate::window::{Window, draw_window};
+use alloc::format;
+use alloc::rc::Rc;
 use core::arch::asm;
 use core::cell::RefCell;
 use core::panic::PanicInfo;
@@ -96,7 +95,11 @@ pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
 
 // must wrap the attribute 'no_mangle' by unsafe(...)
 #[unsafe(no_mangle)] // don't mangle the name of this function
-pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) {
+pub extern "C" fn KernelMain(
+    frame_buffer_config: &FrameBufferConfig,
+    memory_map: &MemoryMap,
+    acpi_table: &acpi::Rsdp,
+) {
     let kernel_main_stack_top_addr = KERNEL_STACK.0.as_ptr() as usize + (1024 * 1024);
 
     unsafe {
@@ -107,6 +110,7 @@ pub extern "C" fn KernelMain(frame_buffer_config: &FrameBufferConfig, memory_map
         func=sym KernelMainNewStack,
         in("rdi") frame_buffer_config,
         in("rsi") memory_map,
+        in("rdx") acpi_table,
         options(noreturn)
             );
     }
@@ -176,13 +180,18 @@ fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height
     );
 }
 
-fn KernelMainNewStack(frame_buffer_config: &FrameBufferConfig, memory_map: &MemoryMap) -> ! {
+fn KernelMainNewStack(
+    frame_buffer_config: &FrameBufferConfig,
+    memory_map: &MemoryMap,
+    acpi_table: &acpi::Rsdp,
+) -> ! {
     segment::init_segment();
     paging::setup_identify_page_table();
 
     initialize_memory_manager(&memory_map);
     allocator::init_heap();
     init_idt();
+    acpi::initialize(acpi_table);
 
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;
     let frame_height: usize = frame_buffer_config.vertical_resolution as usize;
