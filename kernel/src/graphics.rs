@@ -1,5 +1,5 @@
 use crate::frame_buffer_config::FrameBufferConfig;
-use core::ops::{Add, AddAssign};
+use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::ptr;
 
 pub trait PixelDraw {
@@ -162,11 +162,42 @@ where
         self.y = self.y + rhs.y;
     }
 }
+
+impl<T> Sub for Vector2D<T>
+where
+    T: Sub<Output = T>,
+{
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Vector2D {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+
+impl<T> SubAssign for Vector2D<T>
+where
+    T: Sub<Output = T> + Copy,
+{
+    fn sub_assign(&mut self, rhs: Self) {
+        self.x = self.x - rhs.x;
+        self.y = self.y - rhs.y;
+    }
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct PixelColor {
     pub r: u8,
     pub g: u8,
     pub b: u8,
+}
+
+pub const fn to_color(c: u32) -> PixelColor {
+    PixelColor {
+        r: ((c >> 16) & 0xff) as u8,
+        g: ((c >> 8) & 0xff) as u8,
+        b: (c & 0xff) as u8,
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

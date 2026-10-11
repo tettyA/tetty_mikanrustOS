@@ -26,10 +26,12 @@ mod window;
 extern crate alloc;
 use crate::acpi::Rsdp;
 use crate::console::{Console, ConsoleWriter};
-use crate::font::write_string;
+use crate::font::{write_ascii, write_string};
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
-use crate::graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange};
+use crate::graphics::{
+    PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange, to_color,
+};
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
 use crate::keyboard::initialize_keyboard;
 use crate::layer::{LAYER_MANAGER, LayerManager};
@@ -39,7 +41,7 @@ use crate::message::Message;
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
 use crate::pci::initialize_pci;
 use crate::timer::TIMER_MANAGER;
-use crate::window::{Window, draw_window};
+use crate::window::{Window, draw_textbox, draw_window};
 use alloc::format;
 use alloc::rc::Rc;
 use core::arch::asm;
@@ -182,6 +184,45 @@ fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height
     );
 }
 
+fn input_text_window(
+    c: char,
+    text_window: &Rc<RefCell<Window>>,
+    text_window_index: &mut usize,
+    text_window_layer_id: u32,
+) {
+    if c == '\0' {
+        return;
+    }
+
+    {
+        let mut text_window_ref = text_window.borrow_mut();
+        let max_chars = (text_window_ref.width() - 16) / 8;
+        let text_window_writer = text_window_ref.writer();
+
+        let pos = |index: usize| Vector2D {
+            x: 8 + 8 * index,
+            y: 24 + 6,
+        };
+        if c == '\x08' {
+            if *text_window_index > 0 {
+                *text_window_index -= 1;
+                fill_rectrange(
+                    &text_window_writer,
+                    &pos(*text_window_index),
+                    &Vector2D { x: 8, y: 16 },
+                    &to_color(0xffffff),
+                );
+            }
+        } else if c >= ' ' && *text_window_index < max_chars {
+            let p = pos(*text_window_index);
+            write_ascii(&text_window_writer, p.x, p.y, c as u8, &to_color(0));
+            *text_window_index += 1;
+        }
+    }
+
+    redraw_layers_id(text_window_layer_id);
+}
+
 fn KernelMainNewStack(
     frame_buffer_config: &FrameBufferConfig,
     memory_map: &MemoryMap,
@@ -273,6 +314,28 @@ fn KernelMainNewStack(
     layer_manager.up_down(main_window_id, 2);
     layer_manager.up_down(console.get_layer_id(), 1);
 
+    let text_window = Rc::new(RefCell::new(Window::new(
+        160,
+        52,
+        frame_buffer_config.pixel_format,
+    )));
+    draw_window(&text_window.borrow_mut().writer(), "Text Box Test");
+    draw_textbox(
+        &text_window.borrow_mut().writer(),
+        Vector2D { x: 4, y: 24 },
+        Vector2D {
+            x: 160 - 8,
+            y: 52 - 24 - 4,
+        },
+    );
+    let text_window_id = layer_manager
+        .new_layer()
+        .set_window(text_window.clone())
+        .set_draggable(true)
+        .move_to(Vector2D { x: 350, y: 200 })
+        .id;
+    layer_manager.up_down(text_window_id, 4);
+
     LAYER_MANAGER.with(|lm| *lm = Some(layer_manager));
     redraw_layers_all();
     console::init(console);
@@ -320,6 +383,8 @@ fn KernelMainNewStack(
     TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(200, 2)));
 
     TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(700, -1)));
+
+    let mut text_window_index: usize = 0;
     loop {
         unsafe { asm!("cli") };
         let tick = TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()));
@@ -365,17 +430,12 @@ fn KernelMainNewStack(
                 x86_64::instructions::interrupts::enable();
             }
             Some(Message::KeyPush {
-                keycode,
-                modifier,
+                keycode: _,
+                modifier: _,
                 ascii,
             }) => {
                 x86_64::instructions::interrupts::enable();
-                printk!(
-                    "KeyPush: keycode={}, modifier={}, ascii={}\n",
-                    keycode,
-                    modifier,
-                    ascii
-                );
+                input_text_window(ascii, &text_window, &mut text_window_index, text_window_id);
             }
             None => x86_64::instructions::interrupts::enable_and_hlt(),
         }

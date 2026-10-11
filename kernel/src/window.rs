@@ -5,7 +5,7 @@ use crate::{
     font::write_string,
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, fill_rectrange},
+    graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, fill_rectrange, to_color},
 };
 
 const K_CLOSE_BUTTON_WIDTH: usize = 16;
@@ -27,13 +27,6 @@ const WINDOW_CLOSE_BUTTON: [&'static str; K_CLOSE_BUTTON_HEIGHT] = [
     "@@@@@@@@@@@@@@@@",
 ];
 
-const fn to_color(c: u32) -> PixelColor {
-    PixelColor {
-        r: ((c >> 16) & 0xff) as u8,
-        g: ((c >> 8) & 0xff) as u8,
-        b: (c & 0xff) as u8,
-    }
-}
 pub fn draw_window<T: PixelDraw>(writer: &T, title: &str) {
     let fill_rect = |posx: usize, posy: usize, sizew: usize, sizeh: usize, c: u32| {
         fill_rectrange(
@@ -74,6 +67,41 @@ pub fn draw_window<T: PixelDraw>(writer: &T, title: &str) {
             writer.write(win_w - 5 - K_CLOSE_BUTTON_WIDTH + x, 5 + y, &col);
         }
     }
+}
+
+pub fn draw_textbox<T: PixelDraw>(writer: &T, pos: Vector2D<usize>, size: Vector2D<usize>) {
+    let fill_rect = |pos: Vector2D<usize>, size: Vector2D<usize>, c: u32| {
+        fill_rectrange(
+            writer,
+            &Vector2D { x: pos.x, y: pos.y },
+            &Vector2D {
+                x: size.x,
+                y: size.y,
+            },
+            &to_color(c),
+        );
+    };
+
+    // fill main box
+    fill_rect(
+        pos + Vector2D { x: 1, y: 1 },
+        size - Vector2D { x: 2, y: 2 },
+        0xffffff,
+    );
+
+    // draw border
+    fill_rect(pos, Vector2D { x: size.x, y: 1 }, 0x848484);
+    fill_rect(pos, Vector2D { x: 1, y: size.y }, 0x848484);
+    fill_rect(
+        pos + Vector2D { x: 0, y: size.y },
+        Vector2D { x: size.x, y: 1 },
+        0xc6c6c6,
+    );
+    fill_rect(
+        pos + Vector2D { x: size.x, y: 0 },
+        Vector2D { x: 1, y: size.y },
+        0xc6c6c6,
+    );
 }
 
 /// the region of graphics drawing.
