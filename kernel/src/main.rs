@@ -40,7 +40,7 @@ use crate::memory_map::MemoryMap;
 use crate::message::Message;
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
 use crate::pci::initialize_pci;
-use crate::timer::TIMER_MANAGER;
+use crate::timer::{TIMER_FREQ, TIMER_MANAGER};
 use crate::window::{Window, draw_textbox, draw_window};
 use alloc::format;
 use alloc::rc::Rc;
@@ -184,6 +184,19 @@ fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height
     );
 }
 
+fn draw_text_cursor(writer: &impl PixelDraw, text_window_index: usize, visible: bool) {
+    let pos = Vector2D {
+        x: 8 + 8 * text_window_index,
+        y: 24 + 5,
+    };
+    let color = if visible {
+        &to_color(0)
+    } else {
+        &to_color(0xffffff)
+    };
+    fill_rectrange(writer, &pos, &Vector2D { x: 7, y: 15 }, color);
+}
+
 fn input_text_window(
     c: char,
     text_window: &Rc<RefCell<Window>>,
@@ -196,7 +209,7 @@ fn input_text_window(
 
     {
         let mut text_window_ref = text_window.borrow_mut();
-        let max_chars = (text_window_ref.width() - 16) / 8;
+        let max_chars = (text_window_ref.width() - 16) / 8 - 1;
         let text_window_writer = text_window_ref.writer();
 
         let pos = |index: usize| Vector2D {
@@ -205,6 +218,7 @@ fn input_text_window(
         };
         if c == '\x08' {
             if *text_window_index > 0 {
+                draw_text_cursor(&text_window_writer, *text_window_index, false);
                 *text_window_index -= 1;
                 fill_rectrange(
                     &text_window_writer,
@@ -212,11 +226,14 @@ fn input_text_window(
                     &Vector2D { x: 8, y: 16 },
                     &to_color(0xffffff),
                 );
+                draw_text_cursor(&text_window_writer, *text_window_index, true);
             }
         } else if c >= ' ' && *text_window_index < max_chars {
+            draw_text_cursor(&text_window_writer, *text_window_index, false);
             let p = pos(*text_window_index);
             write_ascii(&text_window_writer, p.x, p.y, c as u8, &to_color(0));
             *text_window_index += 1;
+            draw_text_cursor(&text_window_writer, *text_window_index, true);
         }
     }
 
@@ -385,6 +402,17 @@ fn KernelMainNewStack(
     TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(700, -1)));
 
     let mut text_window_index: usize = 0;
+    let textbox_cursor_timer = 1;
+    let timer_50sec = (TIMER_FREQ as f64 * 0.5) as u64;
+    unsafe { asm!("cli") };
+    TIMER_MANAGER.with(|tm| {
+        tm.as_mut()
+            .unwrap()
+            .add_timer(&timer::Timer::new(timer_50sec, textbox_cursor_timer));
+    });
+    unsafe { asm!("sti") };
+    let mut textbox_cursor_visible = false;
+
     loop {
         unsafe { asm!("cli") };
         let tick = TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()));
@@ -426,8 +454,28 @@ fn KernelMainNewStack(
                 x86_64::instructions::interrupts::enable();
                 usb::xhci::ProcessEvents();
             }
-            Some(Message::TimerTimeout { .. }) => {
+            Some(Message::TimerTimeout {
+                timeout,
+                value: timer_id,
+            }) => {
                 x86_64::instructions::interrupts::enable();
+                if timer_id == textbox_cursor_timer {
+                    unsafe { asm!("cli") };
+                    TIMER_MANAGER.with(|tm| {
+                        tm.as_mut().unwrap().add_timer(&timer::Timer::new(
+                            timeout + timer_50sec,
+                            textbox_cursor_timer,
+                        ));
+                    });
+                    unsafe { asm!("sti") };
+                    textbox_cursor_visible = !textbox_cursor_visible;
+                    draw_text_cursor(
+                        &text_window.borrow_mut().writer(),
+                        text_window_index,
+                        textbox_cursor_visible,
+                    );
+                    redraw_layers_id(text_window_id);
+                }
             }
             Some(Message::KeyPush {
                 keycode: _,
