@@ -365,7 +365,7 @@ fn KernelMainNewStack(
                     TIMER_MANAGER.with(|tm| {
                         tm.as_mut()
                             .unwrap()
-                            .add_timer(&timer::Timer::new(tick + 200, value + 1))
+                            .add_timer(&timer::Timer::new(timeout + 100, value + 1))
                     });
                 }
             }

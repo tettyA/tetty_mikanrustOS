@@ -146,3 +146,32 @@ struct Fadt {
 }
 
 static FADT: Global<Option<&Fadt>> = Global::new(None);
+
+unsafe extern "C" {
+    fn IoIn32(addr: u16) -> u32;
+}
+
+pub const PM_TIMER_FREQ: u32 = 3579545;
+
+pub fn wait_milliseconds(ms: u32) {
+    let (pm_timer_block, pm_timer_32) = FADT.with(|fadt| {
+        let fadt = fadt.unwrap();
+        (fadt.pm_timer_block as u16, ((fadt.flags >> 8) & 1) == 1)
+    });
+
+    let start: u32 = unsafe { IoIn32(pm_timer_block) };
+    let mut end = start + (PM_TIMER_FREQ as u64 * ms as u64 / 1000) as u32;
+
+    if !pm_timer_32 {
+        end &= 0x00ffffffu32;
+    }
+
+    if end < start {
+        while unsafe { IoIn32(pm_timer_block) } >= start {
+            // Busy wait
+        }
+    }
+    while unsafe { IoIn32(pm_timer_block) } < end {
+        // Busy wait
+    }
+}

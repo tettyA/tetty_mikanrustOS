@@ -1,9 +1,9 @@
 use alloc::vec::{self, Vec};
 
-use crate::global::Global;
 use crate::interrupts::InterruptVector;
 use crate::message::Message;
 use crate::queue::Queue;
+use crate::{acpi, global::Global};
 use core::ptr::{self, write_volatile};
 const COUNT_MAX: u32 = 0xFFFF_FFFF;
 const LVT_TIMER: *mut u32 = 0xFEE0_0320 as *mut u32; // 割り込み発生方法の設定など
@@ -18,10 +18,26 @@ pub fn initialize_lapic_timer(msg_queue: &'static Global<Queue<Message>>) {
         write_volatile(DIVIDE_CONFIG, 0b1011); // 分周比 1:1
         write_volatile(
             LVT_TIMER,
-            (0b010 << 16) | InterruptVector::LAPICTimer as u32,
-        ); // not-masked, periodic
+            (0b001 << 16) | InterruptVector::LAPICTimer as u32,
+        ); // masked, one-shot
+    }
+    start_lapic_timer();
+    acpi::wait_milliseconds(100);
+    let elapsed = lapic_timer_elapsed();
+    stop_lapic_timer();
 
-        write_volatile(INITIAL_COUNT, 0x1000_000);
+    LAPIC_TIMER_FREQ.with(|freq| *freq = Some(elapsed * 10));
+
+    unsafe {
+        write_volatile(DIVIDE_CONFIG, 0b1011); // 分周比 1:1
+        write_volatile(
+            LVT_TIMER,
+            (0b010 << 16) | InterruptVector::LAPICTimer as u32,
+        ); // not masked, periodic
+    }
+    let initial_count = LAPIC_TIMER_FREQ.with(|freq| freq.unwrap()) / TIMER_FREQ;
+    unsafe {
+        write_volatile(INITIAL_COUNT, initial_count);
     }
 }
 
@@ -128,3 +144,5 @@ impl TimerManager {
     }
 }
 pub static TIMER_MANAGER: Global<Option<TimerManager>> = Global::new(None);
+pub static LAPIC_TIMER_FREQ: Global<Option<u32>> = Global::new(None);
+pub const TIMER_FREQ: u32 = 100; // 100Hz /s 1秒で100回tickが呼ばれる
