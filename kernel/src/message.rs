@@ -1,5 +1,6 @@
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Message {
     InterruptXhci,
-    InterruptLapicTimer { timeout: u64, value: i32 },
+    TimerTimeout { timeout: u64, value: i32 },
+    KeyPush { keycode: u8, ascii: char },
 }

@@ -124,7 +124,7 @@ impl TimerManager {
             }
 
             // タイムアウトしたタイマーを削除してメッセージキューに送信する
-            let message = Message::InterruptLapicTimer {
+            let message = Message::TimerTimeout {
                 timeout: timer.get_timeout(),
                 value: timer.get_value(),
             };

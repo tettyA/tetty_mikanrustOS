@@ -10,6 +10,7 @@ mod frame_buffer_config;
 mod global;
 mod graphics;
 mod interrupts;
+mod keyboard;
 mod layer;
 mod memory_manager;
 mod memory_map;
@@ -30,6 +31,7 @@ use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange};
 use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
+use crate::keyboard::initialize_keyboard;
 use crate::layer::{LAYER_MANAGER, LayerManager};
 use crate::memory_manager::initialize_memory_manager;
 use crate::memory_map::MemoryMap;
@@ -309,6 +311,8 @@ fn KernelMainNewStack(
         redraw_layers_all();
     }
 
+    initialize_keyboard(&INTERRUPTMESSAGE_QUEUE);
+
     initialize_pci();
 
     timer::initialize_lapic_timer(&INTERRUPTMESSAGE_QUEUE);
@@ -357,17 +361,12 @@ fn KernelMainNewStack(
                 x86_64::instructions::interrupts::enable();
                 usb::xhci::ProcessEvents();
             }
-            Some(Message::InterruptLapicTimer { timeout, value }) => {
+            Some(Message::TimerTimeout { .. }) => {
                 x86_64::instructions::interrupts::enable();
-                printk!("Timer: timeout={}, value={}\n", timeout, value);
-
-                if value > 0 {
-                    TIMER_MANAGER.with(|tm| {
-                        tm.as_mut()
-                            .unwrap()
-                            .add_timer(&timer::Timer::new(timeout + 100, value + 1))
-                    });
-                }
+            }
+            Some(Message::KeyPush { keycode, ascii }) => {
+                x86_64::instructions::interrupts::enable();
+                printk!("KeyPush: keycode={}, ascii={}\n", keycode, ascii);
             }
             None => x86_64::instructions::interrupts::enable_and_hlt(),
         }
