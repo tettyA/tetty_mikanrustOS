@@ -364,9 +364,18 @@ fn KernelMainNewStack(
             Some(Message::TimerTimeout { .. }) => {
                 x86_64::instructions::interrupts::enable();
             }
-            Some(Message::KeyPush { keycode, ascii }) => {
+            Some(Message::KeyPush {
+                keycode,
+                modifier,
+                ascii,
+            }) => {
                 x86_64::instructions::interrupts::enable();
-                printk!("KeyPush: keycode={}, ascii={}\n", keycode, ascii);
+                printk!(
+                    "KeyPush: keycode={}, modifier={}, ascii={}\n",
+                    keycode,
+                    modifier,
+                    ascii
+                );
             }
             None => x86_64::instructions::interrupts::enable_and_hlt(),
         }
