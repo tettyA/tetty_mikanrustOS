@@ -57,12 +57,8 @@ pub fn stop_lapic_timer() {
     }
 }
 
-pub fn lapic_timer_on_interrupt() {
-    TIMER_MANAGER.with(|tm| {
-        if let Some(tm) = tm {
-            tm.tick();
-        }
-    });
+pub fn lapic_timer_on_interrupt() -> bool {
+    TIMER_MANAGER.with(|tm| if let Some(tm) = tm { tm.tick() } else { false })
 }
 
 #[derive(Clone, Copy)]
@@ -114,15 +110,21 @@ impl TimerManager {
         }
     }
 
-    fn tick(&mut self) {
+    fn tick(&mut self) -> bool {
         self.tick += 1;
-
+        let mut task_timer_timeout = false;
         while let Some(timer) = self.timers.first() {
             if timer.get_timeout() > self.tick {
                 // まだタイムアウトしていない
                 break;
             }
-
+            if timer.get_value() == TASK_TIMER_VALUE {
+                task_timer_timeout = true;
+                // pop からのpushではなく，0番目を書き換えてソートすることで，Vecの再確保を避ける
+                self.timers[0] = Timer::new(self.tick + TASK_TIMER_PERIOD, TASK_TIMER_VALUE);
+                self.timers.sort_unstable();
+                continue;
+            }
             // タイムアウトしたタイマーを削除してメッセージキューに送信する
             let message = Message::TimerTimeout {
                 timeout: timer.get_timeout(),
@@ -132,6 +134,7 @@ impl TimerManager {
             let _ = self.msg_queue.with(|q| q.push(message));
             self.timers.remove(0);
         }
+        task_timer_timeout
     }
 
     pub fn get_tick(&self) -> u64 {
@@ -146,3 +149,5 @@ impl TimerManager {
 pub static TIMER_MANAGER: Global<Option<TimerManager>> = Global::new(None);
 pub static LAPIC_TIMER_FREQ: Global<Option<u32>> = Global::new(None);
 pub const TIMER_FREQ: u32 = 100; // 100Hz /s 1秒で100回tickが呼ばれる
+pub const TASK_TIMER_PERIOD: u64 = TIMER_FREQ as u64 / 50; // 0.02sec
+pub const TASK_TIMER_VALUE: i32 = i32::MIN;

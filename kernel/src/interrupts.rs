@@ -20,8 +20,12 @@ extern "x86-interrupt" fn interrupt_handler_xhchi_mouse_cursor(_stack_frame: Int
 }
 
 extern "x86-interrupt" fn interrupt_handler_lapic_timer(_stack_frame: InterruptStackFrame) {
-    lapic_timer_on_interrupt();
+    let task_timer_timeout = lapic_timer_on_interrupt();
     notify_end_of_interrupt();
+
+    if task_timer_timeout {
+        crate::task::switch_task();
+    }
 }
 fn notify_end_of_interrupt() {
     unsafe {
