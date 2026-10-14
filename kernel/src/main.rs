@@ -29,6 +29,7 @@ use crate::console::{Console, ConsoleWriter};
 use crate::font::{write_ascii, write_string};
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
+use crate::global::Global;
 use crate::graphics::{
     PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange, to_color,
 };
@@ -40,10 +41,12 @@ use crate::memory_map::MemoryMap;
 use crate::message::Message;
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
 use crate::pci::initialize_pci;
+use crate::segment::{KERNEL_CS, KERNEL_SS};
 use crate::timer::{TIMER_FREQ, TIMER_MANAGER};
 use crate::window::{Window, draw_textbox, draw_window};
-use alloc::format;
+use alloc::boxed::Box;
 use alloc::rc::Rc;
+use alloc::{format, vec};
 use core::arch::asm;
 use core::cell::RefCell;
 use core::panic::PanicInfo;
@@ -59,6 +62,189 @@ struct KernelStack([u8; 1024 * 1024]);
 
 // exclusive stack for kernel
 static KERNEL_STACK: KernelStack = KernelStack([0; 1024 * 1024]);
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C, align(16))]
+struct TaskContext {
+    // offset 0x00
+    cr3: u64,
+    rip: u64,
+    rflags: u64,
+    reserved1: u64,
+
+    // offset 0x20
+    cs: u64,
+    ss: u64,
+    fs: u64,
+    gs: u64,
+
+    // offset 0x40
+    rax: u64,
+    rbx: u64,
+    rcx: u64,
+    rdx: u64,
+    rdi: u64,
+    rsi: u64,
+    rsp: u64,
+    rbp: u64,
+
+    // offset 0x80
+    r8: u64,
+    r9: u64,
+    r10: u64,
+    r11: u64,
+    r12: u64,
+    r13: u64,
+    r14: u64,
+    r15: u64,
+    // offset 0xc0
+    fxsave_area: [u8; 512],
+}
+
+static TASK_A_CTX: Global<TaskContext> = Global::new(unsafe { core::mem::zeroed() });
+static TASK_B_CTX: Global<TaskContext> = Global::new(unsafe { core::mem::zeroed() });
+core::arch::global_asm!(
+    r#"
+.global SwitchContext
+SwitchContext:  # void SwitchContext(void* next_ctx, void* current_ctx);
+    mov [rsi + 0x40], rax
+    mov [rsi + 0x48], rbx
+    mov [rsi + 0x50], rcx
+    mov [rsi + 0x58], rdx
+    mov [rsi + 0x60], rdi
+    mov [rsi + 0x68], rsi
+    lea rax, [rsp + 8]
+    mov [rsi + 0x70], rax   # RSP
+    mov [rsi + 0x78], rbp
+    mov [rsi + 0x80], r8
+    mov [rsi + 0x88], r9
+    mov [rsi + 0x90], r10
+    mov [rsi + 0x98], r11
+    mov [rsi + 0xa0], r12
+    mov [rsi + 0xa8], r13
+    mov [rsi + 0xb0], r14
+    mov [rsi + 0xb8], r15
+    mov rax, cr3
+    mov [rsi + 0x00], rax   # CR3
+    mov rax, [rsp]
+    mov [rsi + 0x08], rax   # RIP
+    pushfq
+    pop qword ptr [rsi + 0x10]  # RFLAGS
+    mov ax, cs
+    mov [rsi + 0x20], rax
+    mov bx, ss
+    mov [rsi + 0x28], rbx
+    mov cx, fs
+    mov [rsi + 0x30], rcx
+    mov dx, gs
+    mov [rsi + 0x38], rdx
+    fxsave [rsi + 0xc0]
+    # iret 用のスタックフレーム
+    push qword ptr [rdi + 0x28]  # SS
+    push qword ptr [rdi + 0x70]  # RSP
+    push qword ptr [rdi + 0x10]  # RFLAGS
+    push qword ptr [rdi + 0x20]  # CS
+    push qword ptr [rdi + 0x08]  # RIP
+    # コンテキストの復帰
+    fxrstor [rdi + 0xc0]
+    mov rax, [rdi + 0x00]
+    mov cr3, rax
+    mov rax, [rdi + 0x30]
+    mov fs, ax
+    mov rax, [rdi + 0x38]
+    mov gs, ax
+    mov rax, [rdi + 0x40]
+    mov rbx, [rdi + 0x48]
+    mov rcx, [rdi + 0x50]
+    mov rdx, [rdi + 0x58]
+    mov rsi, [rdi + 0x68]
+    mov rbp, [rdi + 0x78]
+    mov r8,  [rdi + 0x80]
+    mov r9,  [rdi + 0x88]
+    mov r10, [rdi + 0x90]
+    mov r11, [rdi + 0x98]
+    mov r12, [rdi + 0xa0]
+    mov r13, [rdi + 0xa8]
+    mov r14, [rdi + 0xb0]
+    mov r15, [rdi + 0xb8]
+    mov rdi, [rdi + 0x60]
+    iretq
+"#
+);
+unsafe extern "C" {
+    fn SwitchContext(next_ctx: *const TaskContext, current_ctx: *mut TaskContext);
+}
+
+fn switch_a_to_b() {
+    let b = TASK_B_CTX.with(|c| c as *const TaskContext);
+    let a = TASK_A_CTX.with(|c| c as *mut TaskContext);
+    unsafe {
+        SwitchContext(b, a);
+    }
+}
+
+fn switch_b_to_a() {
+    let a = TASK_A_CTX.with(|c| c as *const TaskContext);
+    let b = TASK_B_CTX.with(|c| c as *mut TaskContext);
+    unsafe {
+        SwitchContext(a, b);
+    }
+}
+
+fn read_cr3() -> u64 {
+    let value: u64;
+    unsafe {
+        asm!("mov {}, cr3", out(reg) value, options(nomem,nostack,preserves_flags));
+    }
+    value
+}
+
+unsafe extern "C" fn task_b(
+    task_id: i32,
+    data: i32,
+    window: *const RefCell<Window>,
+    layer_id: u32,
+) {
+    printk!("task_b task_id={} data={}\n", task_id, data);
+
+    let window: Rc<RefCell<Window>> = unsafe { Rc::from_raw(window) };
+    let mut count: u32 = 0;
+
+    loop {
+        count += 1;
+        {
+            let mut window_ref = window.borrow_mut();
+            let writer = window_ref.writer();
+            fill_rectrange(
+                &writer,
+                &Vector2D {
+                    x: 24 as usize,
+                    y: 28 as usize,
+                },
+                &Vector2D { x: 8 * 10, y: 16 },
+                &PixelColor {
+                    r: 0xc6,
+                    g: 0xc6,
+                    b: 0xc6,
+                },
+            );
+            write_string(
+                &writer,
+                24,
+                28,
+                &format!("{:010}", count),
+                &PixelColor { r: 0, g: 0, b: 0 },
+            );
+        }
+        LAYER_MANAGER.with(|lm| {
+            if let Some(lm) = lm {
+                lm.draw_id(layer_id);
+            }
+        });
+
+        switch_b_to_a();
+    }
+}
 
 /// 全レイヤーを再描画する (LAYER_MANAGER 初期化前は何もしない)。
 pub fn redraw_layers_all() {
@@ -353,6 +539,21 @@ fn KernelMainNewStack(
         .id;
     layer_manager.up_down(text_window_id, 4);
 
+    let task_b_window = Rc::new(RefCell::new(Window::new(
+        160,
+        52,
+        frame_buffer_config.pixel_format,
+    )));
+    draw_window(&task_b_window.borrow_mut().writer(), "Task B Window");
+    let task_b_window_id = layer_manager
+        .new_layer()
+        .set_window(task_b_window.clone())
+        .set_draggable(true)
+        .move_to(Vector2D { x: 300, y: 200 })
+        .id;
+
+    layer_manager.up_down(task_b_window_id, 4);
+
     LAYER_MANAGER.with(|lm| *lm = Some(layer_manager));
     redraw_layers_all();
     console::init(console);
@@ -401,6 +602,31 @@ fn KernelMainNewStack(
 
     TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(700, -1)));
 
+    // TaskB初期化
+
+    let task_b_stack: &'static mut [u64] = Box::leak(vec![0u64; 1024].into_boxed_slice());
+    let task_b_stack_end = task_b_stack.as_ptr() as u64 + (1024 * 8);
+    let task_b_window_ptr = Rc::into_raw(task_b_window.clone()) as u64;
+
+    TASK_B_CTX.with(|c| {
+        *c = unsafe { core::mem::zeroed() };
+        c.rip = task_b as usize as u64;
+        c.rdi = 1; // task_id
+        c.rsi = 42; // data
+        c.rdx = task_b_window_ptr; // window
+        c.rcx = task_b_window_id as u64; // layer_id
+        c.cr3 = read_cr3();
+        c.rflags = 0x202;
+        c.cs = KERNEL_CS;
+        c.ss = KERNEL_SS;
+        c.rsp = (task_b_stack_end & !0xf) - 8;
+
+        // MXCSR の全ての例外をマスクす
+        c.fxsave_area[24..28].copy_from_slice(&0x1f80u32.to_le_bytes());
+    });
+
+    // end TaskB初期化
+
     let mut text_window_index: usize = 0;
     let textbox_cursor_timer = 1;
     let timer_50sec = (TIMER_FREQ as f64 * 0.5) as u64;
@@ -445,7 +671,8 @@ fn KernelMainNewStack(
 
         x86_64::instructions::interrupts::disable();
         if INTERRUPTMESSAGE_QUEUE.with(|q| q.count() == 0) {
-            x86_64::instructions::interrupts::enable_and_hlt();
+            x86_64::instructions::interrupts::enable();
+            switch_a_to_b();
             continue;
         }
         let msg = INTERRUPTMESSAGE_QUEUE.with(|q| q.pop());
