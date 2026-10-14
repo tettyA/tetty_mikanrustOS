@@ -149,5 +149,5 @@ impl TimerManager {
 pub static TIMER_MANAGER: Global<Option<TimerManager>> = Global::new(None);
 pub static LAPIC_TIMER_FREQ: Global<Option<u32>> = Global::new(None);
 pub const TIMER_FREQ: u32 = 100; // 100Hz /s 1秒で100回tickが呼ばれる
-pub const TASK_TIMER_PERIOD: u64 = TIMER_FREQ as u64 / 50; // 0.02sec
+pub const TASK_TIMER_PERIOD: u64 = TIMER_FREQ as u64; // 50; // 0.02sec
 pub const TASK_TIMER_VALUE: i32 = i32::MIN;
