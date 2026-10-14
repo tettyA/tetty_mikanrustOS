@@ -25,12 +25,10 @@ mod timer;
 mod usb;
 mod window;
 extern crate alloc;
-use crate::acpi::Rsdp;
 use crate::console::{Console, ConsoleWriter};
 use crate::font::{write_ascii, write_string};
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
-use crate::global::Global;
 use crate::graphics::{
     PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange, to_color,
 };
@@ -42,13 +40,11 @@ use crate::memory_map::MemoryMap;
 use crate::message::Message;
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
 use crate::pci::initialize_pci;
-use crate::segment::{KERNEL_CS, KERNEL_SS};
-use crate::task::{SwitchContext, TASK_A_CTX, TASK_B_CTX, TaskContext, initialize_task, read_cr3};
+use crate::task::{TASK_MANAGER, initialize_task};
 use crate::timer::{TIMER_FREQ, TIMER_MANAGER};
 use crate::window::{Window, draw_textbox, draw_window};
-use alloc::boxed::Box;
+use alloc::format;
 use alloc::rc::Rc;
-use alloc::{format, vec};
 use core::arch::asm;
 use core::cell::RefCell;
 use core::panic::PanicInfo;
@@ -65,15 +61,11 @@ struct KernelStack([u8; 1024 * 1024]);
 // exclusive stack for kernel
 static KERNEL_STACK: KernelStack = KernelStack([0; 1024 * 1024]);
 
-unsafe extern "C" fn task_b(
-    task_id: i32,
-    data: i32,
-    window: *const RefCell<Window>,
-    layer_id: u32,
-) {
+extern "C" fn task_b(task_id: u64, data: i64, window: u64, layer_id: u64) {
     printk!("task_b task_id={} data={}\n", task_id, data);
     // 初期化側でRc::into_rawした所有権をここで引き取る。関数は戻らないのでdropされない。
-    let window: Rc<RefCell<Window>> = unsafe { Rc::from_raw(window) };
+    let window: Rc<RefCell<Window>> = unsafe { Rc::from_raw(window as *const RefCell<Window>) };
+    let layer_id = layer_id as u32;
     let mut count: u32 = 0;
 
     loop {
@@ -102,6 +94,13 @@ unsafe extern "C" fn task_b(
                 lm.draw_id(layer_id);
             }
         });
+    }
+}
+
+extern "C" fn task_idle(task_id: u64, data: i64, _arg3: u64, _arg4: u64) {
+    printk!("TaskIdle: task_id{}, data={:x}\n", task_id, data);
+    loop {
+        x86_64::instructions::hlt();
     }
 }
 
@@ -463,27 +462,17 @@ fn KernelMainNewStack(
 
     // TaskB初期化
 
-    let task_b_stack: &'static mut [u64] = Box::leak(vec![0u64; 1024].into_boxed_slice());
-    let task_b_stack_end = task_b_stack.as_ptr() as u64 + (1024 * 8);
     let task_b_window_ptr = Rc::into_raw(task_b_window.clone()) as u64;
 
-    TASK_B_CTX.with(|c| {
-        *c = unsafe { core::mem::zeroed() };
-        c.rip = task_b as usize as u64;
-        c.rdi = 1; // task_id
-        c.rsi = 43; // data
-        c.rdx = task_b_window_ptr; // window
-        c.rcx = task_b_window_id as u64; // layer_id
-        c.cr3 = read_cr3();
-        c.rflags = 0x202;
-        c.cs = KERNEL_CS;
-        c.ss = KERNEL_SS;
-        c.rsp = (task_b_stack_end & !0xf) - 8;
-
-        // MXCSR の全ての例外をマスクす
-        c.fxsave_area[24..28].copy_from_slice(&0x1f80u32.to_le_bytes());
-    });
     initialize_task();
+    TASK_MANAGER.with(|tm| {
+        let tm = tm.as_mut().unwrap();
+        tm.new_task()
+            .init_context(task_b, 45)
+            .set_extra_args(task_b_window_ptr, task_b_window_id as u64);
+        tm.new_task().init_context(task_idle, 0xdeadbeef);
+        tm.new_task().init_context(task_idle, 0xcafebabe);
+    });
     // end TaskB初期化
 
     let mut text_window_index: usize = 0;

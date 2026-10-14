@@ -1,7 +1,10 @@
 use core::arch::asm;
 
+use alloc::{boxed::Box, vec::Vec};
+
 use crate::{
     global::Global,
+    segment::{KERNEL_CS, KERNEL_SS},
     timer::{TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER, Timer},
 };
 
@@ -122,38 +125,118 @@ pub fn read_cr3() -> u64 {
     value
 }
 
-pub static TASK_A_CTX: Global<TaskContext> = Global::new(unsafe { core::mem::zeroed() });
-pub static TASK_B_CTX: Global<TaskContext> = Global::new(unsafe { core::mem::zeroed() });
-pub static CURRENT_TASK: Global<*mut TaskContext> = Global::new(core::ptr::null_mut());
+/// タスクのエントリ関数。引数は rdi, rsi, rdx, rcx (System V ABI)に渡される
+pub type TaskFunc = extern "C" fn(u64, i64, u64, u64);
+
+/// タスク毎のスタックサイズ(バイト)
+pub const DEFAULT_STACK_BYTES: usize = 8 * 1024; // format! とか使うから多めに
+
+pub struct Task {
+    id: u64,
+    stack: Vec<u64>,
+    context: TaskContext,
+}
+
+impl Task {
+    fn new(id: u64) -> Self {
+        Self {
+            id,
+            stack: Vec::new(),
+            context: unsafe { core::mem::zeroed() },
+        }
+    }
+
+    /// スタックを確保し，`f(id, data, 0, 0)`を実行するコンテクストを作る
+    pub fn init_context(&mut self, f: TaskFunc, data: i64) -> &mut Self {
+        let stack_size = DEFAULT_STACK_BYTES / core::mem::size_of::<u64>();
+        self.stack = alloc::vec![0u64; stack_size];
+
+        let stack_end = self.stack.as_ptr() as u64 + (stack_size * 8) as u64;
+
+        self.context = unsafe { core::mem::zeroed() };
+        self.context.cr3 = read_cr3();
+        self.context.rflags = 0x202;
+        self.context.cs = KERNEL_CS;
+        self.context.ss = KERNEL_SS;
+        self.context.rsp = (stack_end & !0xf) - 8;
+
+        self.context.rip = f as usize as u64;
+        self.context.rdi = self.id;
+        self.context.rsi = data as u64;
+
+        // MXCSR の全ての例外をマスクする
+        self.context.fxsave_area[24..28].copy_from_slice(&0x1f80u32.to_le_bytes());
+
+        self
+    }
+
+    pub fn set_extra_args(&mut self, arg3: u64, arg4: u64) -> &mut Self {
+        self.context.rdx = arg3;
+        self.context.rcx = arg4;
+        self
+    }
+
+    fn context_ptr(&mut self) -> *mut TaskContext {
+        &mut self.context
+    }
+}
+
+pub struct TaskManager {
+    tasks: Vec<Box<Task>>,
+    latest_id: u64,
+    current_task_index: usize,
+}
+
+impl TaskManager {
+    pub fn new() -> Self {
+        let mut tm = Self {
+            tasks: Vec::new(),
+            latest_id: 0,
+            current_task_index: 0,
+        };
+        // 現在実行中のメインタスク。 contextは最初のSwitchContextで保存される。
+        tm.new_task();
+        tm
+    }
+
+    pub fn new_task(&mut self) -> &mut Task {
+        self.latest_id += 1;
+
+        self.tasks.push(Box::new(Task::new(self.latest_id)));
+        self.tasks.last_mut().unwrap()
+    }
+
+    /// 次のタスクを決めて current_task_index を進め、(next, current) のコンテキストを返す。
+    /// SwitchContext 自体は TASK_MANAGER.with の外で呼ぶこと。
+    fn prepare_switch(&mut self) -> (*const TaskContext, *mut TaskContext) {
+        let mut next_task_index = self.current_task_index + 1;
+        if next_task_index >= self.tasks.len() {
+            next_task_index = 0;
+        }
+
+        let current = self.tasks[self.current_task_index].context_ptr();
+        let next = self.tasks[next_task_index].context_ptr();
+        self.current_task_index = next_task_index;
+
+        (next as *const TaskContext, current)
+    }
+}
+
+pub static TASK_MANAGER: Global<Option<TaskManager>> = Global::new(None);
 
 pub fn switch_task() {
-    let task_a = TASK_A_CTX.with(|c| c as *mut TaskContext);
-    let task_b = TASK_B_CTX.with(|c| c as *mut TaskContext);
-
-    let (next, old) = CURRENT_TASK.with(|cur| {
-        let old = *cur;
-        if old == task_a {
-            *cur = task_b;
-        } else {
-            *cur = task_a;
-        }
-        (*cur, old)
-    });
-
-    unsafe {
-        SwitchContext(next, old);
+    let pointers = TASK_MANAGER.with(|tm| tm.as_mut().map(|tm| tm.prepare_switch()));
+    if let Some((next, current)) = pointers {
+        unsafe { SwitchContext(next, current) };
     }
 }
 
 pub fn initialize_task() {
-    let task_a = TASK_A_CTX.with(|c| c as *mut TaskContext);
+    TASK_MANAGER.with(|tm| *tm = Some(TaskManager::new()));
 
-    // 最初はtask_a
-    CURRENT_TASK.with(|current| *current = task_a);
-    // Global::with は割込みを禁止している(実装を見よ)のでcliとstiは不要
     TIMER_MANAGER.with(|tm| {
         let tm = tm.as_mut().unwrap();
         let timeout = tm.get_tick() + TASK_TIMER_PERIOD;
         tm.add_timer(&Timer::new(timeout, TASK_TIMER_VALUE));
-    })
+    });
 }
