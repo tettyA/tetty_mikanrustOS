@@ -25,7 +25,7 @@ mod timer;
 mod usb;
 mod window;
 extern crate alloc;
-use crate::console::{Console, ConsoleWriter};
+use crate::console::{Console, ConsoleWriter, printk};
 use crate::font::{write_ascii, write_string};
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
@@ -40,7 +40,7 @@ use crate::memory_map::MemoryMap;
 use crate::message::Message;
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
 use crate::pci::initialize_pci;
-use crate::task::{TASK_MANAGER, initialize_task};
+use crate::task::{TASK_MANAGER, initialize_task, sleep, wakeup};
 use crate::timer::{TIMER_FREQ, TIMER_MANAGER};
 use crate::window::{Window, draw_textbox, draw_window};
 use alloc::format;
@@ -465,13 +465,21 @@ fn KernelMainNewStack(
     let task_b_window_ptr = Rc::into_raw(task_b_window.clone()) as u64;
 
     initialize_task();
-    TASK_MANAGER.with(|tm| {
+    let task_b_id = TASK_MANAGER.with(|tm| {
         let tm = tm.as_mut().unwrap();
-        tm.new_task()
+        let task_b_id = tm
+            .new_task()
             .init_context(task_b, 45)
-            .set_extra_args(task_b_window_ptr, task_b_window_id as u64);
-        tm.new_task().init_context(task_idle, 0xdeadbeef);
-        tm.new_task().init_context(task_idle, 0xcafebabe);
+            .set_extra_args(task_b_window_ptr, task_b_window_id as u64)
+            .id();
+        tm.wakeup(task_b_id);
+
+        let id = tm.new_task().init_context(task_idle, 0xdeadbeef).id();
+        tm.wakeup(id).unwrap();
+        let id = tm.new_task().init_context(task_idle, 0xcafebabe).id();
+        tm.wakeup(id).unwrap();
+
+        task_b_id
     });
     // end TaskB初期化
 
@@ -561,6 +569,12 @@ fn KernelMainNewStack(
             }) => {
                 x86_64::instructions::interrupts::enable();
                 input_text_window(ascii, &text_window, &mut text_window_index, text_window_id);
+
+                if ascii == 's' {
+                    printk!("sleep taskB: {:?} \n", sleep(task_b_id));
+                } else if ascii == 'w' {
+                    printk!("wakeup taskB: {:?}\n", wakeup(task_b_id));
+                }
             }
             None => x86_64::instructions::interrupts::enable_and_hlt(),
         }

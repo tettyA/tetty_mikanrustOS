@@ -1,6 +1,6 @@
 use core::arch::asm;
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 
 use crate::{
     global::Global,
@@ -125,8 +125,15 @@ pub fn read_cr3() -> u64 {
     value
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskError {
+    NoSuchTask,
+}
+
 /// タスクのエントリ関数。引数は rdi, rsi, rdx, rcx (System V ABI)に渡される
 pub type TaskFunc = extern "C" fn(u64, i64, u64, u64);
+
+type SwitchPair = (*const TaskContext, *mut TaskContext);
 
 /// タスク毎のスタックサイズ(バイト)
 pub const DEFAULT_STACK_BYTES: usize = 8 * 1024; // format! とか使うから多めに
@@ -144,6 +151,10 @@ impl Task {
             stack: Vec::new(),
             context: unsafe { core::mem::zeroed() },
         }
+    }
+
+    pub fn id(&self) -> u64 {
+        self.id
     }
 
     /// スタックを確保し，`f(id, data, 0, 0)`を実行するコンテクストを作る
@@ -184,7 +195,7 @@ impl Task {
 pub struct TaskManager {
     tasks: Vec<Box<Task>>,
     latest_id: u64,
-    current_task_index: usize,
+    running: VecDeque<u64>, // 実行可能タスクのID。先頭にあるのが現在実行中
 }
 
 impl TaskManager {
@@ -192,11 +203,29 @@ impl TaskManager {
         let mut tm = Self {
             tasks: Vec::new(),
             latest_id: 0,
-            current_task_index: 0,
+            running: VecDeque::new(),
         };
         // 現在実行中のメインタスク。 contextは最初のSwitchContextで保存される。
-        tm.new_task();
+        let id = tm.new_task().id();
+        tm.running.push_back(id);
         tm
+    }
+
+    /// 現在のタスクをrunningの末尾へと回す(寝る場合は外す)，次のタスクとの切り替え対象を返す。
+    /// SwitchContext 自体は TASK_MANAGER.with の外で呼ぶこと。
+    pub fn prepare_switch(&mut self, current_sleep: bool) -> SwitchPair {
+        let current_id = self.running.pop_front().expect("no running task");
+        if !current_sleep {
+            self.running.push_back(current_id);
+        }
+        let next_id = *self
+            .running
+            .front()
+            .expect("no runnable task (idle task missing?)");
+
+        let current = self.task_mut(current_id).unwrap().context_ptr();
+        let next = self.task_mut(next_id).unwrap().context_ptr();
+        (next as *const TaskContext, current)
     }
 
     pub fn new_task(&mut self) -> &mut Task {
@@ -205,30 +234,58 @@ impl TaskManager {
         self.tasks.push(Box::new(Task::new(self.latest_id)));
         self.tasks.last_mut().unwrap()
     }
+    fn task_mut(&mut self, id: u64) -> Option<&mut Task> {
+        self.tasks.iter_mut().find(|t| t.id == id).map(|t| &mut **t)
+    }
 
-    /// 次のタスクを決めて current_task_index を進め、(next, current) のコンテキストを返す。
-    /// SwitchContext 自体は TASK_MANAGER.with の外で呼ぶこと。
-    fn prepare_switch(&mut self) -> (*const TaskContext, *mut TaskContext) {
-        let mut next_task_index = self.current_task_index + 1;
-        if next_task_index >= self.tasks.len() {
-            next_task_index = 0;
+    /// 現在実行中のタスクを寝かせる場合だけ切り替え先を返す。
+    pub fn sleep(&mut self, id: u64) -> Result<(Option<SwitchPair>), TaskError> {
+        self.task_mut(id).ok_or(TaskError::NoSuchTask)?;
+
+        match self.running.iter().position(|&r| r == id) {
+            None => Ok((None)), // 既に寝ている
+            Some(0) => {
+                // 現在実行中
+                Ok(Some(self.prepare_switch(true)))
+            }
+            Some(_) => {
+                self.running.retain(|&r| r != id); // C++でいうErase
+                Ok((None))
+            }
+        }
+    }
+
+    pub fn wakeup(&mut self, id: u64) -> Result<(), TaskError> {
+        self.task_mut(id).ok_or(TaskError::NoSuchTask)?;
+        if !self.running.contains(&id) {
+            self.running.push_back(id);
         }
 
-        let current = self.tasks[self.current_task_index].context_ptr();
-        let next = self.tasks[next_task_index].context_ptr();
-        self.current_task_index = next_task_index;
-
-        (next as *const TaskContext, current)
+        Ok(())
     }
 }
 
 pub static TASK_MANAGER: Global<Option<TaskManager>> = Global::new(None);
 
 pub fn switch_task() {
-    let pointers = TASK_MANAGER.with(|tm| tm.as_mut().map(|tm| tm.prepare_switch()));
-    if let Some((next, current)) = pointers {
+    let pair = TASK_MANAGER.with(|tm| tm.as_mut().map(|tm| tm.prepare_switch(false)));
+    if let Some((next, current)) = pair {
         unsafe { SwitchContext(next, current) };
     }
+}
+
+pub fn sleep(id: u64) -> Result<(), TaskError> {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let pair = TASK_MANAGER.with(|tm| tm.as_mut().unwrap().sleep(id))?;
+        if let Some((next, current)) = pair {
+            unsafe { SwitchContext(next, current) };
+        }
+        Ok(())
+    })
+}
+
+pub fn wakeup(id: u64) -> Result<(), TaskError> {
+    TASK_MANAGER.with(|tm| tm.as_mut().unwrap().wakeup(id))
 }
 
 pub fn initialize_task() {
