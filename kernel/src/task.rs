@@ -127,6 +127,13 @@ pub fn read_cr3() -> u64 {
     value
 }
 
+/// 実行可能なタスクが他に無い時に動く。level 0
+extern "C" fn task_idle(task_id: u64, data: i64, _arg3: u64, _arg4: u64) {
+    loop {
+        x86_64::instructions::hlt();
+    }
+}
+
 /// level: 0 = lowest, MAX_LEVEL = highest
 pub const MAX_LEVEL: usize = 3;
 pub const DEFAULT_LEVEL: usize = 1;
@@ -228,6 +235,13 @@ impl TaskManager {
         task.is_running = true;
         let id = task.id;
         tm.running[level].push_back(id);
+
+        let idle = tm.new_task().init_context(task_idle, 0);
+        idle.level = 0;
+        idle.is_running = true;
+        let idle_id = idle.id;
+        tm.running[idle.level].push_back(idle_id);
+
         tm
     }
 

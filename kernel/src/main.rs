@@ -97,13 +97,6 @@ extern "C" fn task_b(task_id: u64, data: i64, window: u64, layer_id: u64) {
     }
 }
 
-extern "C" fn task_idle(task_id: u64, data: i64, _arg3: u64, _arg4: u64) {
-    printk!("TaskIdle: task_id{}, data={:x}\n", task_id, data);
-    loop {
-        x86_64::instructions::hlt();
-    }
-}
-
 /// 全レイヤーを再描画する (LAYER_MANAGER 初期化前は何もしない)。
 pub fn redraw_layers_all() {
     LAYER_MANAGER.with(|lm| {
@@ -487,11 +480,6 @@ fn KernelMainNewStack(
             .set_extra_args(task_b_window_ptr, task_b_window_id as u64)
             .id();
         tm.wakeup(task_b_id, None).unwrap();
-
-        let id = tm.new_task().init_context(task_idle, 0xdeadbeef).id();
-        tm.wakeup(id, None).unwrap();
-        let id = tm.new_task().init_context(task_idle, 0xcafebabe).id();
-        tm.wakeup(id, None).unwrap();
 
         task_b_id
     });
