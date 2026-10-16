@@ -1,6 +1,4 @@
-use crate::global::Global;
-
-use crate::{message::Message, queue::Queue, usb};
+use crate::{message::Message, usb};
 
 const KEYCODE_MAP: [char; 256] = {
     let mut map = ['\0'; 256];
@@ -65,8 +63,6 @@ const RSHIFT_BIT_MASK: u8 = 0b_0010_0000;
 const RALT_BIT_MASK: u8 = 0b_0100_0000;
 const RGUI_BIT_MASK: u8 = 0b_1000_0000;
 
-static mut MSG_QUEUE: Option<&'static Global<Queue<Message>>> = None;
-
 extern "C" fn keyboard_observer(modifier: u8, keycode: u8, press: bool) {
     if !press {
         return;
@@ -80,18 +76,9 @@ extern "C" fn keyboard_observer(modifier: u8, keycode: u8, press: bool) {
             KEYCODE_MAP[keycode as usize]
         },
     };
-    unsafe {
-        if let Some(msg_queue) = MSG_QUEUE {
-            msg_queue.with(|q| {
-                let _ = q.push(msg);
-            });
-        }
-    }
+    let _ = crate::task::send_message(1, msg);
 }
 
-pub fn initialize_keyboard(msg_queue: &'static Global<Queue<Message>>) {
-    unsafe {
-        MSG_QUEUE = Some(&*msg_queue);
-    }
+pub fn initialize_keyboard() {
     usb::HIDKeyboardDriver::set_default_observer(keyboard_observer);
 }

@@ -1,9 +1,11 @@
 use core::arch::asm;
 
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
+use x86_64::registers::model_specific::Msr;
 
 use crate::{
     global::Global,
+    message::Message,
     segment::{KERNEL_CS, KERNEL_SS},
     timer::{TASK_TIMER_PERIOD, TASK_TIMER_VALUE, TIMER_MANAGER, Timer},
 };
@@ -142,6 +144,7 @@ pub struct Task {
     id: u64,
     stack: Vec<u64>,
     context: TaskContext,
+    msgs: VecDeque<Message>,
 }
 
 impl Task {
@@ -150,6 +153,7 @@ impl Task {
             id,
             stack: Vec::new(),
             context: unsafe { core::mem::zeroed() },
+            msgs: VecDeque::new(),
         }
     }
 
@@ -258,10 +262,29 @@ impl TaskManager {
     pub fn wakeup(&mut self, id: u64) -> Result<(), TaskError> {
         self.task_mut(id).ok_or(TaskError::NoSuchTask)?;
         if !self.running.contains(&id) {
+            // まだ起きていなかったら起こす(runningに追加)
             self.running.push_back(id);
         }
 
         Ok(())
+    }
+    /// メッセージキューにメッセージを追加し，寝ていれば起こす。
+    fn send_message(&mut self, id: u64, msg: Message) -> Result<(), TaskError> {
+        self.task_mut(id)
+            .ok_or(TaskError::NoSuchTask)?
+            .msgs
+            .push_back(msg);
+        // 起きているタスクを呼んでも無害
+        self.wakeup(id)
+    }
+    /// メッセージキューから先頭のメッセージを1つ取り出す。
+    fn recieve_message(&mut self, id: u64) -> Option<Message> {
+        self.task_mut(id)?.msgs.pop_front()
+    }
+
+    /// 現在実行中している(即ち，呼出元の)idを返す
+    pub fn current_task_id(&self) -> u64 {
+        *self.running.front().unwrap()
     }
 }
 
@@ -286,6 +309,18 @@ pub fn sleep(id: u64) -> Result<(), TaskError> {
 
 pub fn wakeup(id: u64) -> Result<(), TaskError> {
     TASK_MANAGER.with(|tm| tm.as_mut().unwrap().wakeup(id))
+}
+
+/// 割込みハンドラからも呼ぶ。TASK_MANAGER未初期化ならErrを返す
+pub fn send_message(id: u64, msg: Message) -> Result<(), TaskError> {
+    TASK_MANAGER.with(|tm| match tm {
+        Some(tm) => tm.send_message(id, msg),
+        None => Err(TaskError::NoSuchTask),
+    })
+}
+
+pub fn receive_message(id: u64) -> Option<Message> {
+    TASK_MANAGER.with(|tm| tm.as_mut().and_then(|tm| tm.recieve_message(id)))
 }
 
 pub fn initialize_task() {

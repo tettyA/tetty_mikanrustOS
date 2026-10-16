@@ -86,10 +86,12 @@ pub fn WriteConfReg(dev: &Device, reg_addr: u8, value: u32) {
 }
 
 pub fn initialize_pci() {
-    unsafe {
-        ScanAllBus();
-        usb::HIDMouseDriver::set_default_observer(crate::mousecursor::MouseObserver);
-        usb::xhci::Initialize();
-        asm!("sti");
-    }
+    ScanAllBus();
+}
+
+/// タスク初期化の後に呼ぶ。キーボードの obserever はこれより前に設定しておくこと。
+/// xHCI を初期化すると，割込みが来初める。宛先のメインタスクが先にある必要があるのでタスク初期化の後に呼ぶ。
+pub fn initialize_usb() {
+    usb::HIDMouseDriver::set_default_observer(crate::mousecursor::MouseObserver);
+    usb::xhci::Initialize();
 }

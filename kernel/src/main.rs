@@ -32,15 +32,15 @@ use crate::frame_buffer_config::FrameBufferConfig;
 use crate::graphics::{
     PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange, to_color,
 };
-use crate::interrupts::{INTERRUPTMESSAGE_QUEUE, init_idt};
+use crate::interrupts::init_idt;
 use crate::keyboard::initialize_keyboard;
 use crate::layer::{LAYER_MANAGER, LayerManager};
 use crate::memory_manager::initialize_memory_manager;
 use crate::memory_map::MemoryMap;
 use crate::message::Message;
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
-use crate::pci::initialize_pci;
-use crate::task::{TASK_MANAGER, initialize_task, sleep, wakeup};
+use crate::pci::{initialize_pci, initialize_usb};
+use crate::task::{TASK_MANAGER, initialize_task, receive_message, sleep, wakeup};
 use crate::timer::{TIMER_FREQ, TIMER_MANAGER};
 use crate::window::{Window, draw_textbox, draw_window};
 use alloc::format;
@@ -450,21 +450,35 @@ fn KernelMainNewStack(
         redraw_layers_all();
     }
 
-    initialize_keyboard(&INTERRUPTMESSAGE_QUEUE);
+    // 色々初期化
 
-    initialize_pci();
+    initialize_pci(); //バス走査のみ
 
-    timer::initialize_lapic_timer(&INTERRUPTMESSAGE_QUEUE);
+    timer::initialize_lapic_timer();
 
     TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(200, 2)));
 
     TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(700, -1)));
+
+    // まだxhci走っていないのでcli/stiは不要
+    let mut text_window_index: usize = 0;
+    let textbox_cursor_timer = 1;
+    let timer_50sec = (TIMER_FREQ as f64 * 0.5) as u64;
+    TIMER_MANAGER.with(|tm| {
+        tm.as_mut()
+            .unwrap()
+            .add_timer(&timer::Timer::new(timer_50sec, textbox_cursor_timer));
+    });
+    let mut textbox_cursor_visible = false;
 
     // TaskB初期化
 
     let task_b_window_ptr = Rc::into_raw(task_b_window.clone()) as u64;
 
     initialize_task();
+
+    x86_64::instructions::interrupts::enable();
+
     let task_b_id = TASK_MANAGER.with(|tm| {
         let tm = tm.as_mut().unwrap();
         let task_b_id = tm
@@ -472,7 +486,7 @@ fn KernelMainNewStack(
             .init_context(task_b, 45)
             .set_extra_args(task_b_window_ptr, task_b_window_id as u64)
             .id();
-        tm.wakeup(task_b_id);
+        tm.wakeup(task_b_id).unwrap();
 
         let id = tm.new_task().init_context(task_idle, 0xdeadbeef).id();
         tm.wakeup(id).unwrap();
@@ -481,20 +495,11 @@ fn KernelMainNewStack(
 
         task_b_id
     });
+    let main_task_id = TASK_MANAGER.with(|tm| tm.as_ref().unwrap().current_task_id());
     // end TaskB初期化
 
-    let mut text_window_index: usize = 0;
-    let textbox_cursor_timer = 1;
-    let timer_50sec = (TIMER_FREQ as f64 * 0.5) as u64;
-    unsafe { asm!("cli") };
-    TIMER_MANAGER.with(|tm| {
-        tm.as_mut()
-            .unwrap()
-            .add_timer(&timer::Timer::new(timer_50sec, textbox_cursor_timer));
-    });
-    unsafe { asm!("sti") };
-    let mut textbox_cursor_visible = false;
-
+    initialize_keyboard();
+    initialize_usb();
     loop {
         unsafe { asm!("cli") };
         let tick = TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()));
@@ -527,21 +532,19 @@ fn KernelMainNewStack(
         redraw_layers_id(main_window_id);
 
         x86_64::instructions::interrupts::disable();
-        if INTERRUPTMESSAGE_QUEUE.with(|q| q.count() == 0) {
-            x86_64::instructions::interrupts::enable_and_hlt();
+        let Some(msg) = receive_message(main_task_id) else {
+            let _ = sleep(main_task_id);
+            x86_64::instructions::interrupts::enable();
             continue;
-        }
-        let msg = INTERRUPTMESSAGE_QUEUE.with(|q| q.pop());
+        };
         match msg {
-            Some(Message::InterruptXhci) => {
-                x86_64::instructions::interrupts::enable();
+            Message::InterruptXhci => {
                 usb::xhci::ProcessEvents();
             }
-            Some(Message::TimerTimeout {
+            Message::TimerTimeout {
                 timeout,
                 value: timer_id,
-            }) => {
-                x86_64::instructions::interrupts::enable();
+            } => {
                 if timer_id == textbox_cursor_timer {
                     unsafe { asm!("cli") };
                     TIMER_MANAGER.with(|tm| {
@@ -562,12 +565,11 @@ fn KernelMainNewStack(
                     redraw_layers_id(text_window_id);
                 }
             }
-            Some(Message::KeyPush {
+            Message::KeyPush {
                 keycode: _,
                 modifier: _,
                 ascii,
-            }) => {
-                x86_64::instructions::interrupts::enable();
+            } => {
                 input_text_window(ascii, &text_window, &mut text_window_index, text_window_id);
 
                 if ascii == 's' {
@@ -576,7 +578,6 @@ fn KernelMainNewStack(
                     printk!("wakeup taskB: {:?}\n", wakeup(task_b_id));
                 }
             }
-            None => x86_64::instructions::interrupts::enable_and_hlt(),
         }
     }
 }

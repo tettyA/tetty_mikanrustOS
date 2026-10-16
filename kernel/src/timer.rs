@@ -11,8 +11,8 @@ const INITIAL_COUNT: *mut u32 = 0xFEE0_0380 as *mut u32; // カウンタ初期�
 const CURRENT_COUNT: *mut u32 = 0xFEE0_0390 as *mut u32; // カウンタ現在値
 const DIVIDE_CONFIG: *mut u32 = 0xFEE0_03E0 as *mut u32; // カウンタ減少スピードの設定
 
-pub fn initialize_lapic_timer(msg_queue: &'static Global<Queue<Message>>) {
-    TIMER_MANAGER.with(|tm| *tm = Some(TimerManager::new(msg_queue)));
+pub fn initialize_lapic_timer() {
+    TIMER_MANAGER.with(|tm| *tm = Some(TimerManager::new()));
 
     unsafe {
         write_volatile(DIVIDE_CONFIG, 0b1011); // 分周比 1:1
@@ -98,15 +98,13 @@ impl Ord for Timer {
 pub(crate) struct TimerManager {
     tick: u64,
     timers: Vec<Timer>,
-    msg_queue: &'static Global<Queue<Message>>,
 }
 
 impl TimerManager {
-    pub fn new(msg_queue: &'static Global<Queue<Message>>) -> Self {
+    pub fn new() -> Self {
         Self {
             tick: 0,
             timers: alloc::vec![Timer::new(u64::MAX, 0)], // 番兵
-            msg_queue,
         }
     }
 
@@ -131,7 +129,7 @@ impl TimerManager {
                 value: timer.get_value(),
             };
             // TODO: Vecなので計算量改善 (DequeueとかBinaryHeapとか)
-            let _ = self.msg_queue.with(|q| q.push(message));
+            let _ = crate::task::send_message(1, message);
             self.timers.remove(0);
         }
         task_timer_timeout
