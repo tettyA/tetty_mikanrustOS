@@ -127,6 +127,10 @@ pub fn read_cr3() -> u64 {
     value
 }
 
+/// level: 0 = lowest, MAX_LEVEL = highest
+pub const MAX_LEVEL: usize = 3;
+pub const DEFAULT_LEVEL: usize = 1;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskError {
     NoSuchTask,
@@ -145,6 +149,8 @@ pub struct Task {
     stack: Vec<u64>,
     context: TaskContext,
     msgs: VecDeque<Message>,
+    level: usize,
+    is_running: bool,
 }
 
 impl Task {
@@ -154,6 +160,8 @@ impl Task {
             stack: Vec::new(),
             context: unsafe { core::mem::zeroed() },
             msgs: VecDeque::new(),
+            level: DEFAULT_LEVEL,
+            is_running: false,
         }
     }
 
@@ -199,7 +207,9 @@ impl Task {
 pub struct TaskManager {
     tasks: Vec<Box<Task>>,
     latest_id: u64,
-    running: VecDeque<u64>, // 実行可能タスクのID。先頭にあるのが現在実行中
+    running: [VecDeque<u64>; MAX_LEVEL + 1], // レベルごとの実行可能タスクのID。先頭にあるのが現在実行中,
+    current_level: usize,
+    level_changed: bool, // 次回タスクの切り替え時に実行中レベルを見直す必要があることを知らせる。trueにすると次SwitchTask()を実行中した時にcurrent_levelの見直しが行われる。
 }
 
 impl TaskManager {
@@ -207,23 +217,44 @@ impl TaskManager {
         let mut tm = Self {
             tasks: Vec::new(),
             latest_id: 0,
-            running: VecDeque::new(),
+            running: core::array::from_fn(|_| VecDeque::new()),
+            current_level: MAX_LEVEL,
+            level_changed: false,
         };
         // 現在実行中のメインタスク。 contextは最初のSwitchContextで保存される。
-        let id = tm.new_task().id();
-        tm.running.push_back(id);
+        let level = tm.current_level;
+        let task = tm.new_task();
+        task.level = level;
+        task.is_running = true;
+        let id = task.id;
+        tm.running[level].push_back(id);
         tm
     }
 
     /// 現在のタスクをrunningの末尾へと回す(寝る場合は外す)，次のタスクとの切り替え対象を返す。
     /// SwitchContext 自体は TASK_MANAGER.with の外で呼ぶこと。
     pub fn prepare_switch(&mut self, current_sleep: bool) -> SwitchPair {
-        let current_id = self.running.pop_front().expect("no running task");
+        let level_queue = &mut self.running[self.current_level];
+        let current_id = level_queue.pop_front().expect("no running task");
         if !current_sleep {
-            self.running.push_back(current_id);
+            level_queue.push_back(current_id);
         }
-        let next_id = *self
-            .running
+        if level_queue.is_empty() {
+            self.level_changed = true;
+            // このレベルで実行中可能なランキューが空になった
+            // -> レベル更新
+        }
+        if self.level_changed {
+            self.level_changed = false;
+            // 実行可能なタスクがある最高レベルに変更
+            for lv in (0..=MAX_LEVEL).rev() {
+                if !self.running[lv].is_empty() {
+                    self.current_level = lv;
+                    break;
+                }
+            }
+        }
+        let next_id = *self.running[self.current_level]
             .front()
             .expect("no runnable task (idle task missing?)");
 
@@ -243,31 +274,73 @@ impl TaskManager {
     }
 
     /// 現在実行中のタスクを寝かせる場合だけ切り替え先を返す。
-    pub fn sleep(&mut self, id: u64) -> Result<(Option<SwitchPair>), TaskError> {
-        self.task_mut(id).ok_or(TaskError::NoSuchTask)?;
-
-        match self.running.iter().position(|&r| r == id) {
-            None => Ok((None)), // 既に寝ている
-            Some(0) => {
-                // 現在実行中
-                Ok(Some(self.prepare_switch(true)))
-            }
-            Some(_) => {
-                self.running.retain(|&r| r != id); // C++でいうErase
-                Ok((None))
-            }
+    pub fn sleep(&mut self, id: u64) -> Result<Option<SwitchPair>, TaskError> {
+        let task = self.task_mut(id).ok_or(TaskError::NoSuchTask)?;
+        if !task.is_running {
+            return Ok(None); // 既に寝ている。
         }
+
+        task.is_running = false;
+        let level = task.level;
+
+        if self.running[self.current_level].front() == Some(&id) {
+            // 現在実行中
+            return Ok(Some(self.prepare_switch(true)));
+        }
+        self.running[level].retain(|&r| r != id); // C++でいうErase
+        Ok(None)
     }
 
-    pub fn wakeup(&mut self, id: u64) -> Result<(), TaskError> {
-        self.task_mut(id).ok_or(TaskError::NoSuchTask)?;
-        if !self.running.contains(&id) {
-            // まだ起きていなかったら起こす(runningに追加)
-            self.running.push_back(id);
+    /// `level` が `None` なら現在のレベルのまま。実行中のタスクに `Some` を渡すとレベルを変更する
+    pub fn wakeup(&mut self, id: u64, level: Option<usize>) -> Result<(), TaskError> {
+        let task = self.task_mut(id).ok_or(TaskError::NoSuchTask)?;
+        if task.is_running {
+            self.change_level_running(id, level);
+            return Ok(());
+        }
+
+        let level = level.unwrap_or(task.level);
+        task.level = level;
+        task.is_running = true;
+
+        self.running[level].push_back(id);
+        if level > self.current_level {
+            self.level_changed = true;
         }
 
         Ok(())
     }
+
+    /// 実行可能なタスクのレベルを変更する。`level` が None か現在と同じなら何もしない。
+    fn change_level_running(&mut self, id: u64, level: Option<usize>) {
+        let Some(level) = level else { return };
+        let old_level = self.task_mut(id).unwrap().level;
+        if level == old_level {
+            return;
+        }
+
+        if self.running[self.current_level].front() != Some(&id) {
+            // 他のタスクのレベルを変える。
+            self.running[old_level].retain(|&r| r != id);
+            self.running[level].push_back(id);
+            self.task_mut(id).unwrap().level = level;
+            if level > self.current_level {
+                self.level_changed = true;
+            }
+            return;
+        }
+
+        // 自分自身のレベルを変更する。
+        self.running[self.current_level].pop_front();
+        self.running[level].push_front(id);
+        self.task_mut(id).unwrap().level = level;
+        let raised = level >= self.current_level;
+        self.current_level = level;
+        if !raised {
+            self.level_changed = true;
+        }
+    }
+
     /// メッセージキューにメッセージを追加し，寝ていれば起こす。
     fn send_message(&mut self, id: u64, msg: Message) -> Result<(), TaskError> {
         self.task_mut(id)
@@ -275,7 +348,7 @@ impl TaskManager {
             .msgs
             .push_back(msg);
         // 起きているタスクを呼んでも無害
-        self.wakeup(id)
+        self.wakeup(id, None)
     }
     /// メッセージキューから先頭のメッセージを1つ取り出す。
     fn recieve_message(&mut self, id: u64) -> Option<Message> {
@@ -284,7 +357,7 @@ impl TaskManager {
 
     /// 現在実行中している(即ち，呼出元の)idを返す
     pub fn current_task_id(&self) -> u64 {
-        *self.running.front().unwrap()
+        *self.running[self.current_level].front().unwrap()
     }
 }
 
@@ -308,7 +381,7 @@ pub fn sleep(id: u64) -> Result<(), TaskError> {
 }
 
 pub fn wakeup(id: u64) -> Result<(), TaskError> {
-    TASK_MANAGER.with(|tm| tm.as_mut().unwrap().wakeup(id))
+    TASK_MANAGER.with(|tm| tm.as_mut().unwrap().wakeup(id, None))
 }
 
 /// 割込みハンドラからも呼ぶ。TASK_MANAGER未初期化ならErrを返す

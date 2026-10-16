@@ -486,12 +486,12 @@ fn KernelMainNewStack(
             .init_context(task_b, 45)
             .set_extra_args(task_b_window_ptr, task_b_window_id as u64)
             .id();
-        tm.wakeup(task_b_id).unwrap();
+        tm.wakeup(task_b_id, None).unwrap();
 
         let id = tm.new_task().init_context(task_idle, 0xdeadbeef).id();
-        tm.wakeup(id).unwrap();
+        tm.wakeup(id, None).unwrap();
         let id = tm.new_task().init_context(task_idle, 0xcafebabe).id();
-        tm.wakeup(id).unwrap();
+        tm.wakeup(id, None).unwrap();
 
         task_b_id
     });
@@ -537,6 +537,7 @@ fn KernelMainNewStack(
             x86_64::instructions::interrupts::enable();
             continue;
         };
+        x86_64::instructions::interrupts::enable();
         match msg {
             Message::InterruptXhci => {
                 usb::xhci::ProcessEvents();
