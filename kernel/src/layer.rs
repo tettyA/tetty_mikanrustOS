@@ -1,6 +1,6 @@
 use core::{cell::RefCell, ptr::null_mut};
 
-use crate::global::Global;
+use crate::{global::Global, message::LayerOperation};
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 
@@ -280,4 +280,21 @@ impl LayerManager {
             .find(|l| l.id == id)
             .map(|l| l.as_mut())
     }
+}
+
+pub fn process_layer_message(op: LayerOperation, layer_id: u32) {
+    LAYER_MANAGER.with(|lm| {
+        let Some(lm) = lm.as_mut() else { return };
+        match op {
+            LayerOperation::Move { x, y } => {
+                lm.move_layer(layer_id, Vector2D { x, y });
+            }
+            LayerOperation::MoveRelative { x, y } => {
+                lm.move_layer_rerative(layer_id, Vector2D { x, y });
+            }
+            LayerOperation::Draw => {
+                lm.draw_id(layer_id);
+            }
+        }
+    });
 }

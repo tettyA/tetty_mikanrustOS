@@ -40,7 +40,7 @@ use crate::memory_map::MemoryMap;
 use crate::message::Message;
 use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
 use crate::pci::{initialize_pci, initialize_usb};
-use crate::task::{TASK_MANAGER, initialize_task, receive_message, sleep, wakeup};
+use crate::task::{TASK_MANAGER, initialize_task, receive_message, send_message, sleep, wakeup};
 use crate::timer::{TIMER_FREQ, TIMER_MANAGER};
 use crate::window::{Window, draw_textbox, draw_window};
 use alloc::format;
@@ -89,11 +89,27 @@ extern "C" fn task_b(task_id: u64, data: i64, window: u64, layer_id: u64) {
             );
             write_string(&writer, 24, 28, &text, &PixelColor { r: 0, g: 0, b: 0 });
         });
-        LAYER_MANAGER.with(|lm| {
-            if let Some(lm) = lm {
-                lm.draw_id(layer_id);
+        let _ = send_message(
+            1,
+            Message::Layer {
+                op: message::LayerOperation::Draw,
+                layer_id,
+                src_task: task_id,
+            },
+        );
+        loop {
+            x86_64::instructions::interrupts::disable();
+            let Some(msg) = receive_message(task_id) else {
+                let _ = sleep(task_id);
+                x86_64::instructions::interrupts::enable();
+                continue;
+            };
+
+            x86_64::instructions::interrupts::enable();
+            if msg == Message::LayerFinish {
+                break;
             }
-        });
+        }
     }
 }
 
@@ -567,6 +583,15 @@ fn KernelMainNewStack(
                     printk!("wakeup taskB: {:?}\n", wakeup(task_b_id));
                 }
             }
+            Message::Layer {
+                op,
+                layer_id,
+                src_task,
+            } => {
+                layer::process_layer_message(op, layer_id);
+                let _ = send_message(src_task, Message::LayerFinish);
+            }
+            Message::LayerFinish => {}
         }
     }
 }
