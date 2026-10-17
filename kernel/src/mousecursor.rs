@@ -1,5 +1,5 @@
 use crate::global::Global;
-use crate::{console, printk};
+use crate::{console, layer, printk};
 use crate::{
     graphics::{PixelColor, PixelDraw, Vector2D},
     layer::LAYER_MANAGER,
@@ -117,12 +117,15 @@ impl MouseCursor {
             });
             if target_layer_id > 0 {
                 self.drag_layer_id = target_layer_id;
+                crate::layer::activate(target_layer_id);
                 printk!(
                     "MouseObserver: layer_id = {}, pos = ({}, {})\n",
                     self.drag_layer_id,
                     self.position.x,
                     self.position.y
                 );
+            } else {
+                crate::layer::activate(0);
             }
         } else if previous_left_pressed && left_pressed {
             // 左ボタンが押されている間

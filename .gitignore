@@ -12,3 +12,4 @@ hankaku.txt
 .devcontainer
 mnt/
 tools/*
+*.py

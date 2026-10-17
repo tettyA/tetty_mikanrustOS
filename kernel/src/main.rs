@@ -73,12 +73,12 @@ extern "C" fn task_b(task_id: u64, data: i64, window: u64, layer_id: u64) {
         let text = format!("{:010}", count);
         x86_64::instructions::interrupts::without_interrupts(|| {
             let mut window_ref = window.borrow_mut();
-            let writer = window_ref.writer();
+            let writer = window_ref.inner_writer();
             fill_rectrange(
                 &writer,
                 &Vector2D {
-                    x: 24 as usize,
-                    y: 28 as usize,
+                    x: 20 as usize,
+                    y: 4 as usize,
                 },
                 &Vector2D { x: 8 * 10, y: 16 },
                 &PixelColor {
@@ -87,7 +87,7 @@ extern "C" fn task_b(task_id: u64, data: i64, window: u64, layer_id: u64) {
                     b: 0xc6,
                 },
             );
-            write_string(&writer, 24, 28, &text, &PixelColor { r: 0, g: 0, b: 0 });
+            write_string(&writer, 20, 4, &text, &PixelColor { r: 0, g: 0, b: 0 });
         });
         let _ = send_message(
             1,
@@ -239,8 +239,8 @@ fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height
 
 fn draw_text_cursor(writer: &impl PixelDraw, text_window_index: usize, visible: bool) {
     let pos = Vector2D {
-        x: 8 + 8 * text_window_index,
-        y: 24 + 5,
+        x: 4 + 8 * text_window_index,
+        y: 5,
     };
     let color = if visible {
         &to_color(0)
@@ -262,12 +262,12 @@ fn input_text_window(
 
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut text_window_ref = text_window.borrow_mut();
-        let max_chars = (text_window_ref.width() - 16) / 8 - 1;
-        let text_window_writer = text_window_ref.writer();
+        let max_chars = (text_window_ref.width() - 8) / 8 - 1;
+        let text_window_writer = text_window_ref.inner_writer();
 
         let pos = |index: usize| Vector2D {
-            x: 8 + 8 * index,
-            y: 24 + 6,
+            x: 4 + 8 * index,
+            y: 6,
         };
         if c == '\x08' {
             if *text_window_index > 0 {
@@ -322,12 +322,12 @@ fn KernelMainNewStack(
         kMouseCursorHeight,
         frame_buffer_config.pixel_format,
     )));
-    let main_window = Rc::new(RefCell::new(Window::new(
+    let main_window = Rc::new(RefCell::new(Window::new_toplevel(
         160,
         52,
         frame_buffer_config.pixel_format,
+        "Hello Window",
     )));
-    draw_window(&main_window.borrow_mut().writer(), "Hello window");
 
     let console_window = Rc::new(RefCell::new(Window::new(
         Console::COLUMN_NUM * 8,
@@ -384,19 +384,17 @@ fn KernelMainNewStack(
     layer_manager.up_down(main_window_id, 2);
     layer_manager.up_down(console.get_layer_id(), 1);
 
-    let text_window = Rc::new(RefCell::new(Window::new(
+    let text_window = Rc::new(RefCell::new(Window::new_toplevel(
         160,
         52,
         frame_buffer_config.pixel_format,
+        "Text Box TaskContext",
     )));
-    draw_window(&text_window.borrow_mut().writer(), "Text Box Test");
+    let text_box_size = text_window.borrow().inner_size();
     draw_textbox(
-        &text_window.borrow_mut().writer(),
-        Vector2D { x: 4, y: 24 },
-        Vector2D {
-            x: 160 - 8,
-            y: 52 - 24 - 4,
-        },
+        &text_window.borrow_mut().inner_writer(),
+        Vector2D { x: 0, y: 0 },
+        text_box_size,
     );
     let text_window_id = layer_manager
         .new_layer()
@@ -406,12 +404,13 @@ fn KernelMainNewStack(
         .id;
     layer_manager.up_down(text_window_id, 4);
 
-    let task_b_window = Rc::new(RefCell::new(Window::new(
+    let task_b_window = Rc::new(RefCell::new(Window::new_toplevel(
         160,
         52,
         frame_buffer_config.pixel_format,
+        "Task B Widnow",
     )));
-    draw_window(&task_b_window.borrow_mut().writer(), "Task B Window");
+
     let task_b_window_id = layer_manager
         .new_layer()
         .set_window(task_b_window.clone())
@@ -421,7 +420,11 @@ fn KernelMainNewStack(
 
     layer_manager.up_down(task_b_window_id, 4);
 
+    layer_manager.up_down(mouse_layer_id, 10);
+
     LAYER_MANAGER.with(|lm| *lm = Some(layer_manager));
+    layer::set_mouse_layer(mouse_layer_id);
+    layer::activate(task_b_window_id);
     redraw_layers_all();
     console::init(console);
 
@@ -510,10 +513,10 @@ fn KernelMainNewStack(
         unsafe { asm!("sti") };
         x86_64::instructions::interrupts::without_interrupts(|| {
             fill_rectrange(
-                &main_window.borrow_mut().writer(),
+                &main_window.borrow_mut().inner_writer(),
                 &Vector2D {
-                    x: 24 as usize,
-                    y: 28 as usize,
+                    x: 20 as usize,
+                    y: 4 as usize,
                 },
                 &Vector2D {
                     x: 8 * 10 as usize,
@@ -526,9 +529,9 @@ fn KernelMainNewStack(
                 },
             );
             write_string(
-                &main_window.borrow_mut().writer(),
-                24,
-                28,
+                &main_window.borrow_mut().inner_writer(),
+                20,
+                4,
                 &format!("{:>10}", tick),
                 &PixelColor { r: 0, g: 140, b: 0 },
             );
@@ -562,7 +565,7 @@ fn KernelMainNewStack(
                     textbox_cursor_visible = !textbox_cursor_visible;
                     x86_64::instructions::interrupts::without_interrupts(|| {
                         draw_text_cursor(
-                            &text_window.borrow_mut().writer(),
+                            &text_window.borrow_mut().inner_writer(),
                             text_window_index,
                             textbox_cursor_visible,
                         );
@@ -571,16 +574,25 @@ fn KernelMainNewStack(
                 }
             }
             Message::KeyPush {
-                keycode: _,
+                keycode,
                 modifier: _,
                 ascii,
             } => {
-                input_text_window(ascii, &text_window, &mut text_window_index, text_window_id);
-
-                if ascii == 's' {
-                    printk!("sleep taskB: {:?} \n", sleep(task_b_id));
-                } else if ascii == 'w' {
-                    printk!("wakeup taskB: {:?}\n", wakeup(task_b_id));
+                let act = layer::get_active();
+                if act == text_window_id {
+                    input_text_window(ascii, &text_window, &mut text_window_index, text_window_id);
+                } else if act == task_b_window_id {
+                    if ascii == 's' {
+                        printk!("sleep taskB: {:?} \n", sleep(task_b_id));
+                    } else if ascii == 'w' {
+                        printk!("wakeup taskB: {:?}\n", wakeup(task_b_id));
+                    }
+                } else {
+                    printk!(
+                        "key push not handled: keycode: {:02x}, ascii {:02x}\n",
+                        keycode,
+                        ascii as u8
+                    );
                 }
             }
             Message::Layer {

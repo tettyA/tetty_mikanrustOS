@@ -1,6 +1,6 @@
 use core::{cell::RefCell, ptr::null_mut};
 
-use crate::{global::Global, message::LayerOperation};
+use crate::{global::Global, layer, message::LayerOperation};
 
 use alloc::{boxed::Box, rc::Rc, vec::Vec};
 
@@ -69,6 +69,8 @@ pub struct LayerManager {
     layer_stack: Vec<u32>,
     screen: FrameBuffer,
     back_buffer: FrameBuffer,
+    active_layer: u32,
+    mouse_layer: u32,
 }
 
 impl LayerManager {
@@ -82,6 +84,8 @@ impl LayerManager {
             layer_stack: Vec::new(),
             screen,
             back_buffer: FrameBuffer::new(backbuffer_config),
+            active_layer: 0,
+            mouse_layer: 0,
         }
     }
 
@@ -125,6 +129,31 @@ impl LayerManager {
         }
     }
 
+    pub fn get_height(&self, id: u32) -> Option<usize> {
+        self.layer_stack.iter().position(|&x| x == id)
+    }
+
+    /// レイヤーの重なり順を設定する(new_height が小さいほど背面。負で非表示)
+    pub fn up_down(&mut self, id: u32, new_height: i32) {
+        if new_height < 0 {
+            self.hide_layer(id);
+            return;
+        }
+        let new_pos = (new_height as usize).min(self.layer_stack.len());
+
+        if let Some(old_pos) = self.layer_stack.iter().position(|&x| x == id) {
+            let layer_id = self.layer_stack.remove(old_pos);
+            let insert_pos = if new_pos > old_pos {
+                (new_pos - 1).min(self.layer_stack.len())
+            } else {
+                new_pos
+            };
+            self.layer_stack.insert(insert_pos, layer_id);
+        } else {
+            self.layer_stack.insert(new_pos, id);
+        }
+    }
+
     pub fn move_layer_rerative(&mut self, id: u32, pos_relative: Vector2D<i32>) {
         let mut old_area = None;
         let mut new_area = None;
@@ -156,27 +185,41 @@ impl LayerManager {
         }
     }
 
-    /// レイヤーの重なり順を設定する (`new_z` が小さいほど背面、負なら非表示)。
-    pub fn up_down(&mut self, id: u32, new_z: i32) {
-        if let Some(layer) = self.find_layer(id) {
-            layer.z = new_z;
-        } else {
-            return;
-        }
-        let mut visible: Vec<(i32, u32)> = self
-            .layers
-            .iter()
-            .filter(|l| l.z >= 0)
-            .map(|l| (l.z, l.id))
-            .collect();
-        visible.sort_by_key(|&(z, _)| z);
-        self.layer_stack = visible.into_iter().map(|(_, id)| id).collect();
-    }
     pub fn hide_layer(&mut self, id: u32) {
-        self.up_down(id, -1);
+        self.layer_stack.retain(|&x| x != id);
     }
     pub fn show_layer(&mut self, id: u32, new_z: i32) {
         self.up_down(id, new_z);
+    }
+    pub fn activate(&mut self, layer_id: u32) {
+        if self.active_layer == layer_id {
+            return;
+        }
+
+        if self.active_layer > 0 {
+            if let Some(layer) = self.find_layer(self.active_layer) {
+                if let Some(window) = &layer.window {
+                    window.borrow_mut().deactivate();
+                }
+            }
+            self.draw_id(self.active_layer);
+        }
+
+        self.active_layer = layer_id;
+
+        if self.active_layer > 0 {
+            if let Some(layer) = self.find_layer(self.active_layer) {
+                if let Some(window) = &layer.window {
+                    window.borrow_mut().activate();
+                }
+            }
+
+            if let Some(mouse_h) = self.get_height(self.mouse_layer) {
+                let new_h = if mouse_h > 0 { mouse_h - 1 } else { 0 };
+                self.up_down(self.active_layer, new_h as i32);
+            }
+            self.draw_id(self.active_layer);
+        }
     }
 
     /// 全レイヤーを直接画面へ描画する。
@@ -297,4 +340,22 @@ pub fn process_layer_message(op: LayerOperation, layer_id: u32) {
             }
         }
     });
+}
+
+pub fn activate(layer_id: u32) {
+    LAYER_MANAGER.with(|lm| {
+        if let Some(lm) = lm {
+            lm.activate(layer_id);
+        }
+    });
+}
+pub fn set_mouse_layer(mouse_layer_id: u32) {
+    LAYER_MANAGER.with(|lm| {
+        if let Some(lm) = lm {
+            lm.mouse_layer = mouse_layer_id;
+        }
+    });
+}
+pub fn get_active() -> u32 {
+    LAYER_MANAGER.with(|lm| lm.as_ref().map_or(0, |lm| lm.active_layer))
 }

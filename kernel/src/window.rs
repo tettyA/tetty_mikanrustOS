@@ -27,6 +27,40 @@ const WINDOW_CLOSE_BUTTON: [&'static str; K_CLOSE_BUTTON_HEIGHT] = [
     "@@@@@@@@@@@@@@@@",
 ];
 
+pub const TOP_LEFT_MARGIN: Vector2D<usize> = Vector2D { x: 4, y: 24 };
+pub const BOTTOM_RIGHT_MARGIN: Vector2D<usize> = Vector2D { x: 4, y: 4 };
+
+/// タイトルバーを描画する
+pub fn draw_window_title<T: PixelDraw>(writer: &T, title: &str, active: bool) {
+    let win_w = writer.width();
+    let bgcolor = if active { 0x000084 } else { 0x848484 };
+
+    fill_rectrange(
+        writer,
+        &Vector2D { x: 3, y: 3 },
+        &Vector2D {
+            x: win_w - 6,
+            y: 18,
+        },
+        &to_color(bgcolor),
+    );
+    write_string(writer, 24, 4, title, &to_color(0xffffff));
+    for (y, s) in WINDOW_CLOSE_BUTTON.iter().enumerate() {
+        for (x, c) in s.chars().enumerate() {
+            let col = if c == '@' {
+                to_color(0x000000)
+            } else if c == '$' {
+                to_color(0x848484)
+            } else if c == ':' {
+                to_color(0xc6c6c6)
+            } else {
+                to_color(0x000000)
+            };
+            writer.write(win_w - 5 - K_CLOSE_BUTTON_WIDTH + x, 5 + y, &col);
+        }
+    }
+}
+
 pub fn draw_window<T: PixelDraw>(writer: &T, title: &str) {
     let fill_rect = |posx: usize, posy: usize, sizew: usize, sizeh: usize, c: u32| {
         fill_rectrange(
@@ -51,22 +85,7 @@ pub fn draw_window<T: PixelDraw>(writer: &T, title: &str) {
     fill_rect(1, win_h - 2, win_w - 2, 1, 0x848484);
     fill_rect(0, win_h - 1, win_w, 1, 0x000000);
 
-    write_string(writer, 24, 4, title, &to_color(0xffffff));
-
-    for (y, s) in WINDOW_CLOSE_BUTTON.iter().enumerate() {
-        for (x, c) in s.chars().enumerate() {
-            let col = if c == '@' {
-                to_color(0x000000)
-            } else if c == '$' {
-                to_color(0x848484)
-            } else if c == ':' {
-                to_color(0xc6c6c6)
-            } else {
-                to_color(0x000000)
-            };
-            writer.write(win_w - 5 - K_CLOSE_BUTTON_WIDTH + x, 5 + y, &col);
-        }
-    }
+    draw_window_title(writer, title, false);
 }
 
 pub fn draw_textbox<T: PixelDraw>(writer: &T, pos: Vector2D<usize>, size: Vector2D<usize>) {
@@ -112,6 +131,7 @@ pub struct Window {
     data: Vec<Vec<PixelColor>>,
     shadow_buffer: FrameBuffer,
     transparent_color: Option<PixelColor>,
+    title: Option<alloc::string::String>, // アクティブウィンドウの時，Some("??")
 }
 impl Window {
     pub fn new(width: usize, height: usize, shadow_format: PixelFormat) -> Self {
@@ -127,6 +147,46 @@ impl Window {
                 pixel_format: shadow_format,
             }),
             transparent_color: None,
+            title: None,
+        }
+    }
+
+    pub fn new_toplevel(
+        width: usize,
+        height: usize,
+        shadow_format: PixelFormat,
+        title: &str,
+    ) -> Self {
+        let mut window = Self::new(width, height, shadow_format);
+        window.title = Some(alloc::string::String::from(title));
+        draw_window(&window.writer(), title);
+
+        window
+    }
+    pub fn activate(&mut self) {
+        if let Some(title) = &self.title.clone() {
+            draw_window_title(&self.writer(), title, true);
+        }
+    }
+    pub fn deactivate(&mut self) {
+        if let Some(title) = &self.title.clone() {
+            draw_window_title(&self.writer(), title, false);
+        }
+    }
+    pub fn inner_size(&self) -> Vector2D<usize> {
+        Vector2D {
+            x: self
+                .width
+                .saturating_sub(TOP_LEFT_MARGIN.x + BOTTOM_RIGHT_MARGIN.x),
+            y: self
+                .height
+                .saturating_sub(TOP_LEFT_MARGIN.y + BOTTOM_RIGHT_MARGIN.y),
+        }
+    }
+    pub fn inner_writer(&mut self) -> InnerAreaWriter<'_> {
+        InnerAreaWriter {
+            window: self as *mut Window,
+            _marker: PhantomData,
         }
     }
     pub fn window_move(&mut self, dst_pos: Vector2D<i32>, src: &Rectangle<i32>) {
@@ -253,5 +313,26 @@ impl<'a> PixelDraw for WindowWriter<'a> {
 
     fn height(&self) -> usize {
         unsafe { (*self.window).height }
+    }
+}
+
+pub struct InnerAreaWriter<'a> {
+    window: *mut Window,
+    _marker: PhantomData<&'a mut Window>,
+}
+
+impl<'a> PixelDraw for InnerAreaWriter<'a> {
+    fn write(&self, x: usize, y: usize, c: &PixelColor) {
+        unsafe {
+            (*self.window).write(x + TOP_LEFT_MARGIN.x, y + TOP_LEFT_MARGIN.y, *c);
+        }
+    }
+
+    fn width(&self) -> usize {
+        unsafe { (*self.window).inner_size().x }
+    }
+
+    fn height(&self) -> usize {
+        unsafe { (*self.window).inner_size().y }
     }
 }
