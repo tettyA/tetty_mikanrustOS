@@ -253,6 +253,15 @@ impl LayerManager {
 
     /// レイヤー `id` とその前面にあるレイヤーを、`id` の領域だけ再描画する。
     pub fn draw_id(&mut self, id: u32) {
+        self.draw_id_internal(id, None);
+    }
+
+    /// レイヤー `id` 内の指定された領域 (ウィンドウ相対座標) と、その前面レイヤーを再描画する。
+    pub fn draw_id_area(&mut self, id: u32, area: Rectangle<i32>) {
+        self.draw_id_internal(id, Some(area));
+    }
+
+    fn draw_id_internal(&mut self, id: u32, area: Option<Rectangle<i32>>) {
         let mut draw = false;
         let mut window_area = Rectangle {
             pos_lu: Vector2D { x: 0, y: 0 },
@@ -270,6 +279,15 @@ impl LayerManager {
                         x: window.width() as i32,
                         y: window.height() as i32,
                     };
+
+                    if let Some(mut req_area) = area {
+                        req_area.pos_lu += window_area.pos_lu;
+
+                        window_area = match window_area.intersect(&req_area) {
+                            Some(inter) => inter,
+                            None => return, // 重なり領域がなければ描画処理をスキップ
+                        };
+                    }
                     draw = true;
                 }
             }
@@ -285,7 +303,6 @@ impl LayerManager {
             self.screen.copy_area(&window_area, &self.back_buffer);
         }
     }
-
     pub fn find_layer_by_position(
         &mut self,
         pos: Vector2D<i32>,
@@ -341,6 +358,9 @@ pub fn process_layer_message(op: LayerOperation, layer_id: u32) {
             }
             LayerOperation::Draw => {
                 lm.draw_id(layer_id);
+            }
+            LayerOperation::DrawArea { area } => {
+                lm.draw_id_area(layer_id, area);
             }
         }
     });

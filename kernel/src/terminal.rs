@@ -2,12 +2,12 @@ use alloc::rc::Rc;
 use core::cell::RefCell;
 
 use crate::{
-    graphics::{Vector2D, to_color},
+    graphics::{Rectangle, Vector2D, to_color},
     layer::{LAYER_MANAGER, LayerManager},
     message::{LayerOperation, Message},
     redraw_layers_id,
     task::{self, receive_message},
-    window::{MARGIN_X, MARGIN_Y, Window, draw_terminal},
+    window::{MARGIN_X, MARGIN_Y, TOP_LEFT_MARGIN, Window, draw_terminal},
 };
 
 pub struct Terminal {
@@ -62,10 +62,18 @@ impl Terminal {
         self.layer_id
     }
 
-    pub fn blink_cursor(&mut self) {
+    pub fn blink_cursor(&mut self) -> Rectangle<i32> {
         self.cursor_visible = !self.cursor_visible;
 
         self.draw_cursor(self.cursor_visible);
+
+        Rectangle {
+            pos_lu: Vector2D {
+                x: TOP_LEFT_MARGIN.x as i32 + 4 + 8 * self.cursor.x as i32,
+                y: TOP_LEFT_MARGIN.y as i32 + 5 + 16 * self.cursor.y as i32,
+            },
+            size: Vector2D { x: 7, y: 15 },
+        }
     }
 
     fn draw_cursor(&mut self, visible: bool) {
@@ -111,11 +119,12 @@ pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64
 
         match msg {
             Message::TimerTimeout { .. } => {
-                terminal.blink_cursor();
+                let area = terminal.blink_cursor();
+
                 let _ = task::send_message(
                     1,
                     Message::Layer {
-                        op: LayerOperation::Draw,
+                        op: LayerOperation::DrawArea { area },
                         layer_id,
                         src_task: task_id,
                     },

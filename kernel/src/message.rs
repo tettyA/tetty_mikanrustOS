@@ -1,8 +1,11 @@
+use crate::graphics::Rectangle;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayerOperation {
     Move { x: i32, y: i32 },
     MoveRelative { x: i32, y: i32 },
     Draw,
+    DrawArea { area: Rectangle<i32> },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

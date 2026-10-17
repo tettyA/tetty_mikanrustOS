@@ -200,8 +200,39 @@ pub const fn to_color(c: u32) -> PixelColor {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Rectangle<T> {
     pub pos_lu: Vector2D<T>,
     pub size: Vector2D<T>,
+}
+
+impl<T> Rectangle<T>
+where
+    T: Copy + Ord + Add<Output = T> + Sub<Output = T>,
+{
+    /// 2つの矩形の交差（重なり）部分を計算する。重なりがない場合は None を返す。
+    pub fn intersect(&self, other: &Self) -> Option<Self> {
+        let lhs_end_x = self.pos_lu.x + self.size.x;
+        let lhs_end_y = self.pos_lu.y + self.size.y;
+        let rhs_end_x = other.pos_lu.x + other.size.x;
+        let rhs_end_y = other.pos_lu.y + other.size.y;
+        let start_x = self.pos_lu.x.max(other.pos_lu.x);
+        let start_y = self.pos_lu.y.max(other.pos_lu.y);
+        let end_x = lhs_end_x.min(rhs_end_x);
+        let end_y = lhs_end_y.min(rhs_end_y);
+        if start_x < end_x && start_y < end_y {
+            Some(Rectangle {
+                pos_lu: Vector2D {
+                    x: start_x,
+                    y: start_y,
+                },
+                size: Vector2D {
+                    x: end_x - start_x,
+                    y: end_y - start_y,
+                },
+            })
+        } else {
+            None
+        }
+    }
 }
