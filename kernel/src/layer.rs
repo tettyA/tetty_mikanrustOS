@@ -97,6 +97,10 @@ impl LayerManager {
         self.layers.last_mut().unwrap()
     }
 
+    pub fn pixel_format(&self) -> crate::frame_buffer_config::PixelFormat {
+        self.screen.pixel_format()
+    }
+
     pub fn move_layer(&mut self, id: u32, new_pos: Vector2D<i32>) {
         let mut old_area = None;
         let mut new_area = None;

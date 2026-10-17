@@ -21,6 +21,7 @@ mod pci;
 mod queue;
 mod segment;
 mod task;
+mod terminal;
 mod timer;
 mod usb;
 mod window;
@@ -400,7 +401,7 @@ fn KernelMainNewStack(
         .new_layer()
         .set_window(text_window.clone())
         .set_draggable(true)
-        .move_to(Vector2D { x: 350, y: 200 })
+        .move_to(Vector2D { x: 500, y: 100 })
         .id;
     layer_manager.up_down(text_window_id, 4);
 
@@ -502,6 +503,14 @@ fn KernelMainNewStack(
 
         task_b_id
     });
+
+    let task_terminal_id = TASK_MANAGER.with(|tm| {
+        let tm = tm.as_mut().unwrap();
+        let id = tm.new_task().init_context(terminal::task_terminal, 0).id();
+        tm.wakeup(id, None).unwrap();
+        id
+    });
+
     let main_task_id = TASK_MANAGER.with(|tm| tm.as_ref().unwrap().current_task_id());
     // end TaskB初期化
 
@@ -572,6 +581,7 @@ fn KernelMainNewStack(
                     });
                     redraw_layers_id(text_window_id);
                 }
+                let _ = send_message(task_terminal_id, msg);
             }
             Message::KeyPush {
                 keycode,

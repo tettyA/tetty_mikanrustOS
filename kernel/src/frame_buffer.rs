@@ -27,6 +27,9 @@ impl FrameBuffer {
 
         Self { config, buffer }
     }
+    pub fn pixel_format(&self) -> PixelFormat {
+        self.config.pixel_format
+    }
     pub fn get_config_mut(&mut self) -> &mut FrameBufferConfig {
         &mut self.config
     }
@@ -136,7 +139,12 @@ impl FrameBuffer {
         }
     }
 
-    pub fn copy_window_area(&mut self, pos: Vector2D<i32>, area: &Rectangle<i32>, src: &FrameBuffer) {
+    pub fn copy_window_area(
+        &mut self,
+        pos: Vector2D<i32>,
+        area: &Rectangle<i32>,
+        src: &FrameBuffer,
+    ) {
         let bytes_per_pixel = 4;
 
         let dst_width = self.config.horizontal_resolution;
@@ -146,8 +154,12 @@ impl FrameBuffer {
 
         let start_x = area.pos_lu.x.max(pos.x).max(0);
         let start_y = area.pos_lu.y.max(pos.y).max(0);
-        let end_x = (area.pos_lu.x + area.size.x).min(pos.x + src_width as i32).min(dst_width as i32);
-        let end_y = (area.pos_lu.y + area.size.y).min(pos.y + src_height as i32).min(dst_height as i32);
+        let end_x = (area.pos_lu.x + area.size.x)
+            .min(pos.x + src_width as i32)
+            .min(dst_width as i32);
+        let end_y = (area.pos_lu.y + area.size.y)
+            .min(pos.y + src_height as i32)
+            .min(dst_height as i32);
 
         if start_x >= end_x || start_y >= end_y {
             return;
@@ -171,8 +183,10 @@ impl FrameBuffer {
             let current_dst_y = dst_start_y + y;
             let current_src_y = src_start_y + y;
 
-            let dst_offset = (current_dst_y * dst_pixels_per_scan_line + dst_start_x) * bytes_per_pixel;
-            let src_offset = (current_src_y * src_pixels_per_scan_line + src_start_x) * bytes_per_pixel;
+            let dst_offset =
+                (current_dst_y * dst_pixels_per_scan_line + dst_start_x) * bytes_per_pixel;
+            let src_offset =
+                (current_src_y * src_pixels_per_scan_line + src_start_x) * bytes_per_pixel;
             let line_bytes = copy_width * bytes_per_pixel;
 
             dst_slice[dst_offset as usize..(dst_offset + line_bytes) as usize].copy_from_slice(

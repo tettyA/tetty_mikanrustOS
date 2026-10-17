@@ -29,6 +29,8 @@ const WINDOW_CLOSE_BUTTON: [&'static str; K_CLOSE_BUTTON_HEIGHT] = [
 
 pub const TOP_LEFT_MARGIN: Vector2D<usize> = Vector2D { x: 4, y: 24 };
 pub const BOTTOM_RIGHT_MARGIN: Vector2D<usize> = Vector2D { x: 4, y: 4 };
+pub const MARGIN_X: usize = TOP_LEFT_MARGIN.x + BOTTOM_RIGHT_MARGIN.x;
+pub const MARGIN_Y: usize = TOP_LEFT_MARGIN.y + BOTTOM_RIGHT_MARGIN.y;
 
 /// タイトルバーを描画する
 pub fn draw_window_title<T: PixelDraw>(writer: &T, title: &str, active: bool) {
@@ -88,7 +90,14 @@ pub fn draw_window<T: PixelDraw>(writer: &T, title: &str) {
     draw_window_title(writer, title, false);
 }
 
-pub fn draw_textbox<T: PixelDraw>(writer: &T, pos: Vector2D<usize>, size: Vector2D<usize>) {
+pub fn draw_textbox_with_color<T: PixelDraw>(
+    writer: &T,
+    pos: Vector2D<usize>,
+    size: Vector2D<usize>,
+    background: u32,
+    border_light: u32,
+    border_dark: u32,
+) {
     let fill_rect = |pos: Vector2D<usize>, size: Vector2D<usize>, c: u32| {
         fill_rectrange(
             writer,
@@ -105,22 +114,30 @@ pub fn draw_textbox<T: PixelDraw>(writer: &T, pos: Vector2D<usize>, size: Vector
     fill_rect(
         pos + Vector2D { x: 1, y: 1 },
         size - Vector2D { x: 2, y: 2 },
-        0xffffff,
+        background,
     );
 
     // draw border
-    fill_rect(pos, Vector2D { x: size.x, y: 1 }, 0x848484);
-    fill_rect(pos, Vector2D { x: 1, y: size.y }, 0x848484);
+    fill_rect(pos, Vector2D { x: size.x, y: 1 }, border_dark);
+    fill_rect(pos, Vector2D { x: 1, y: size.y }, border_dark);
     fill_rect(
         pos + Vector2D { x: 0, y: size.y },
         Vector2D { x: size.x, y: 1 },
-        0xc6c6c6,
+        border_light,
     );
     fill_rect(
         pos + Vector2D { x: size.x, y: 0 },
         Vector2D { x: 1, y: size.y },
-        0xc6c6c6,
+        border_light,
     );
+}
+
+pub fn draw_textbox<T: PixelDraw>(writer: &T, pos: Vector2D<usize>, size: Vector2D<usize>) {
+    draw_textbox_with_color(writer, pos, size, 0xffffff, 0xc6c6c6, 0x848484);
+}
+
+pub fn draw_terminal<T: PixelDraw>(writer: &T, pos: Vector2D<usize>, size: Vector2D<usize>) {
+    draw_textbox_with_color(writer, pos, size, 0x000000, 0xc6c6c6, 0x848484);
 }
 
 /// the region of graphics drawing.
