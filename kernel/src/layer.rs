@@ -1,8 +1,8 @@
-use core::{cell::RefCell, ptr::null_mut};
+use core::{cell::RefCell, ptr::null_mut, task};
 
 use crate::{global::Global, layer, message::LayerOperation};
 
-use alloc::{boxed::Box, rc::Rc, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, vec::Vec};
 
 use crate::{
     frame_buffer::FrameBuffer,
@@ -382,4 +382,18 @@ pub fn set_mouse_layer(mouse_layer_id: u32) {
 }
 pub fn get_active() -> u32 {
     LAYER_MANAGER.with(|lm| lm.as_ref().map_or(0, |lm| lm.active_layer))
+}
+
+pub static LAYER_TASK_MAP: Global<BTreeMap<u32, u64>> = Global::new(BTreeMap::new());
+
+/// レイヤIDとタスクIDの対応を登録する
+pub fn register_layer_task(layer_id: u32, task_id: u64) {
+    LAYER_TASK_MAP.with(|map| {
+        map.insert(layer_id, task_id);
+    });
+}
+
+/// レイヤIDに対応するタスクIDを取得する。
+pub fn get_task_by_layer(layer_id: u32) -> Option<u64> {
+    LAYER_TASK_MAP.with(|map| map.get(&layer_id).copied())
 }

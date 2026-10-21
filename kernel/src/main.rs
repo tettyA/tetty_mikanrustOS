@@ -597,6 +597,8 @@ fn KernelMainNewStack(
                     } else if ascii == 'w' {
                         printk!("wakeup taskB: {:?}\n", wakeup(task_b_id));
                     }
+                } else if let Some(target_task_id) = layer::get_task_by_layer(act) {
+                    let _ = send_message(target_task_id, msg);
                 } else {
                     printk!(
                         "key push not handled: keycode: {:02x}, ascii {:02x}\n",
