@@ -1,4 +1,4 @@
-use alloc::rc::Rc;
+use alloc::{format, rc::Rc};
 use core::cell::RefCell;
 
 use crate::{
@@ -6,7 +6,7 @@ use crate::{
     graphics::{Rectangle, Vector2D, fill_rectrange, to_color},
     layer::{LAYER_MANAGER, LayerManager},
     message::{LayerOperation, Message},
-    printk, redraw_layers_id,
+    pci, printk, redraw_layers_id,
     task::{self, receive_message},
     window::{MARGIN_X, MARGIN_Y, TOP_LEFT_MARGIN, Window, draw_terminal},
 };
@@ -203,6 +203,24 @@ impl Terminal {
                 &to_color(0),
             );
             self.cursor.y = 0;
+        } else if command == "lspci" {
+            for i in 0..pci::num_device() {
+                let dev = pci::devices(i);
+                let vendor_id = pci::ReadVendorId(&dev);
+
+                let s = format!(
+                    "{:02x}:{:02x}.{} vend={:04x} head={:02x} class={:02x}.{:02x}.{:02x}\n",
+                    dev.bus,
+                    dev.device,
+                    dev.function,
+                    vendor_id,
+                    dev.header_type,
+                    dev.class_code.base,
+                    dev.class_code.sub,
+                    dev.class_code.interface
+                );
+                self.print(&s);
+            }
         } else if !command.is_empty() {
             self.print("no such command: ");
             self.print(command);
