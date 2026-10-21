@@ -53,15 +53,17 @@ impl Terminal {
 
             (layer_id, window)
         });
-
-        Self {
+        let mut term = Self {
             window,
             layer_id,
             cursor: Vector2D { x: 0, y: 0 },
             cursor_visible: false,
             line_buf: [0; Self::LINE_MAX],
             linebuf_index: 0,
-        }
+        };
+        term.print(">");
+
+        term
     }
 
     pub fn layer_id(&self) -> u32 {
@@ -140,6 +142,63 @@ impl Terminal {
         );
     }
 
+    fn newline(&mut self) {
+        self.cursor.x = 0;
+        if self.cursor.y < Self::ROWS - 1 {
+            self.cursor.y += 1;
+        } else {
+            self.scroll1();
+        }
+    }
+
+    pub fn print(&mut self, s: &str) {
+        self.draw_cursor(false);
+
+        for c in s.chars() {
+            if c == '\n' {
+                self.newline();
+            } else {
+                let pos = self.calc_cursor_pos();
+                write_ascii(
+                    &self.window.borrow_mut().writer(),
+                    pos.x,
+                    pos.y,
+                    c as u8,
+                    &to_color(0xffffff),
+                );
+
+                if self.cursor.x == Self::COLUMNS - 1 {
+                    self.newline();
+                } else {
+                    self.cursor.x += 1;
+                }
+            }
+        }
+
+        self.draw_cursor(true);
+    }
+
+    fn execute_line(&mut self) {
+        let line_buf = self.line_buf;
+        let linebuf_index = self.linebuf_index;
+        self.linebuf_index = 0;
+        let line = core::str::from_utf8(&line_buf[..linebuf_index]).unwrap_or("");
+        let (command, first_arg) = match line.split_once(' ') {
+            Some((cmd, arg)) => (cmd, Some(arg)),
+            None => (line, None),
+        };
+        if command == "echo" {
+            if let Some(arg) = first_arg {
+                self.print(arg);
+            }
+            self.print("\n");
+        } else if !command.is_empty() {
+            self.print("no such command: ");
+            self.print(command);
+            self.print("\n");
+        }
+    }
+
     pub fn input_key(&mut self, _modifier: u8, _keycode: u8, ascii: char) -> Rectangle<i32> {
         self.draw_cursor(false);
 
@@ -152,22 +211,13 @@ impl Terminal {
         };
 
         if ascii == '\n' {
-            let line = core::str::from_utf8(&self.line_buf[..self.linebuf_index]).unwrap_or("");
-
-            printk!("line:{}\n", line);
-            self.linebuf_index = 0;
-            self.cursor.x = 0;
-            if self.cursor.y < Self::ROWS - 1 {
-                self.cursor.y += 1;
-            } else {
-                self.scroll1();
-            }
-
+            self.newline();
+            self.execute_line();
+            self.print(">");
             draw_area.pos_lu = Vector2D {
                 x: TOP_LEFT_MARGIN.x as i32,
                 y: TOP_LEFT_MARGIN.y as i32,
             };
-
             let inner_size = self.window.borrow().inner_size();
             draw_area.size = Vector2D {
                 x: inner_size.x as i32,
