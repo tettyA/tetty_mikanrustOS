@@ -192,6 +192,17 @@ impl Terminal {
                 self.print(arg);
             }
             self.print("\n");
+        } else if command == "clear" {
+            fill_rectrange(
+                &self.window.borrow_mut().inner_writer(),
+                &Vector2D { x: 4, y: 4 },
+                &Vector2D {
+                    x: 8 * Self::COLUMNS,
+                    y: 16 * Self::ROWS,
+                },
+                &to_color(0),
+            );
+            self.cursor.y = 0;
         } else if !command.is_empty() {
             self.print("no such command: ");
             self.print(command);
