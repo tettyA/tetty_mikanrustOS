@@ -262,7 +262,17 @@ impl Terminal {
                 let base_str = core::str::from_utf8(&base[..base_len]).unwrap_or("");
                 let ext_str = core::str::from_utf8(&ext[..ext_len]).unwrap_or("");
 
-                if !ext_str.is_empty() {
+                if entry.attr == crate::fat::Attribute::VolumeId {
+                    // ボリュームラベルは 8.3 形式ではなく， 11 文字の単一の文字列
+                    let name = entry.name;
+                    let len = name
+                        .iter()
+                        .rposition(|&c| c != b' ' && c != 0)
+                        .map_or(0, |i| i + 1);
+                    let name_str = core::str::from_utf8(&name[..len]).unwrap_or("");
+                    let s = format!("{}\n", name_str);
+                    self.print(&s);
+                } else if !ext_str.is_empty() {
                     let s = format!("{}.{}\n", base_str, ext_str);
                     self.print(&s);
                 } else {
