@@ -1,8 +1,8 @@
-use alloc::{format, rc::Rc};
+use alloc::{collections::VecDeque, format, rc::Rc};
 use core::cell::RefCell;
 
 use crate::{
-    font::write_ascii,
+    font::{write_ascii, write_string},
     graphics::{Rectangle, Vector2D, fill_rectrange, to_color},
     layer::{LAYER_MANAGER, LayerManager},
     message::{LayerOperation, Message},
@@ -18,6 +18,8 @@ pub struct Terminal {
     cursor_visible: bool,
     line_buf: [u8; Self::LINE_MAX],
     linebuf_index: usize,
+    cmd_history: VecDeque<[u8; Self::LINE_MAX]>,
+    cmd_history_index: i32,
 }
 
 impl Terminal {
@@ -53,6 +55,10 @@ impl Terminal {
 
             (layer_id, window)
         });
+
+        let mut cmd_history = VecDeque::with_capacity(8);
+        cmd_history.resize(8, [0; Self::LINE_MAX]);
+
         let mut term = Self {
             window,
             layer_id,
@@ -60,6 +66,8 @@ impl Terminal {
             cursor_visible: false,
             line_buf: [0; Self::LINE_MAX],
             linebuf_index: 0,
+            cmd_history,
+            cmd_history_index: -1,
         };
         term.print(">");
 
@@ -228,6 +236,62 @@ impl Terminal {
         }
     }
 
+    /// direction = -1 -> 進む +1 -> 戻る
+    fn history_updown(&mut self, direction: i32) -> Rectangle<i32> {
+        if direction == -1 && self.cmd_history_index >= 0 {
+            self.cmd_history_index -= 1;
+        } else if direction == 1 && (self.cmd_history_index + 1) < self.cmd_history.len() as i32 {
+            self.cmd_history_index += 1;
+        }
+        self.cursor.x = 1;
+        let first_pos = self.calc_cursor_pos();
+
+        let draw_area = Rectangle {
+            pos_lu: Vector2D {
+                x: first_pos.x as i32,
+                y: first_pos.y as i32,
+            },
+            size: Vector2D {
+                x: (8 * (Self::COLUMNS - 1)) as i32,
+                y: 16,
+            },
+        };
+
+        fill_rectrange(
+            &self.window.borrow_mut().writer(),
+            &first_pos,
+            &Vector2D {
+                x: 8 * (Self::COLUMNS - 1),
+                y: 16,
+            },
+            &to_color(0),
+        );
+
+        let history: &[u8] = if self.cmd_history_index >= 0 {
+            let entry = &self.cmd_history[self.cmd_history_index as usize];
+            let len = entry.iter().position(|&c| c == 0).unwrap_or(entry.len());
+            &entry[..len]
+        } else {
+            b""
+        };
+
+        self.line_buf[..history.len()].copy_from_slice(history);
+        self.line_buf[history.len()..].fill(0);
+        self.linebuf_index = history.len();
+
+        let s = core::str::from_utf8(history).unwrap_or("");
+        write_string(
+            &self.window.borrow_mut().writer(),
+            first_pos.x,
+            first_pos.y,
+            s,
+            &to_color(0xffffff),
+        );
+
+        self.cursor.x = self.linebuf_index + 1;
+
+        draw_area
+    }
     pub fn input_key(&mut self, _modifier: u8, _keycode: u8, ascii: char) -> Rectangle<i32> {
         self.draw_cursor(false);
 
@@ -240,6 +304,13 @@ impl Terminal {
         };
 
         if ascii == '\n' {
+            self.line_buf[self.linebuf_index..].fill(0); // 最後を0埋め
+            if self.linebuf_index > 0 {
+                self.cmd_history.pop_back();
+                self.cmd_history.push_front(self.line_buf);
+            }
+            self.cmd_history_index = -1;
+
             self.newline();
             self.execute_line();
             self.print(">");
@@ -270,6 +341,10 @@ impl Terminal {
                     self.linebuf_index -= 1;
                 }
             }
+        } else if _keycode == 0x51 {
+            draw_area = self.history_updown(-1);
+        } else if _keycode == 0x52 {
+            draw_area = self.history_updown(1);
         } else if ascii != '\0' {
             if self.cursor.x < Self::COLUMNS - 1 && self.linebuf_index < Self::LINE_MAX - 1 {
                 self.line_buf[self.linebuf_index] = ascii as u8;
