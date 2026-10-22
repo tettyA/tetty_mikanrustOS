@@ -105,6 +105,7 @@ pub extern "C" fn KernelMain(
     frame_buffer_config: &FrameBufferConfig,
     memory_map: &MemoryMap,
     acpi_table: &acpi::Rsdp,
+    volume_image: *const u8,
 ) {
     let kernel_main_stack_top_addr = KERNEL_STACK.0.as_ptr() as usize + (1024 * 1024);
 
@@ -117,6 +118,7 @@ pub extern "C" fn KernelMain(
         in("rdi") frame_buffer_config,
         in("rsi") memory_map,
         in("rdx") acpi_table,
+        in("rcx") volume_image,
         options(noreturn)
             );
     }
@@ -246,6 +248,7 @@ fn KernelMainNewStack(
     frame_buffer_config: &FrameBufferConfig,
     memory_map: &MemoryMap,
     acpi_table: &acpi::Rsdp,
+    volume_image: *const u8,
 ) -> ! {
     segment::init_segment();
     paging::setup_identify_page_table();
@@ -433,6 +436,21 @@ fn KernelMainNewStack(
 
     initialize_keyboard();
     initialize_usb();
+
+    let volume_slice = unsafe { core::slice::from_raw_parts(volume_image, 256) };
+    printk!("Volume Image\n");
+    for i in 0..16 {
+        printk!("{:04x}:", i * 16);
+        for j in 0..8 {
+            printk!(" {:02x}", volume_slice[i * 16 + j]);
+        }
+        printk!(" ");
+        for j in 8..16 {
+            printk!(" {:02x}", volume_slice[i * 16 + j]);
+        }
+        printk!("\n");
+    }
+
     loop {
         unsafe { asm!("cli") };
         let tick = TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()));
