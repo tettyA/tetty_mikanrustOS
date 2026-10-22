@@ -4,6 +4,7 @@
 mod acpi;
 mod allocator;
 mod console;
+mod fat;
 mod font;
 mod frame_buffer;
 mod frame_buffer_config;
@@ -398,6 +399,7 @@ fn KernelMainNewStack(
     }
 
     // 色々初期化
+    fat::initialize(volume_image);
 
     initialize_pci(); //バス走査のみ
 
@@ -436,20 +438,6 @@ fn KernelMainNewStack(
 
     initialize_keyboard();
     initialize_usb();
-
-    let volume_slice = unsafe { core::slice::from_raw_parts(volume_image, 256) };
-    printk!("Volume Image\n");
-    for i in 0..16 {
-        printk!("{:04x}:", i * 16);
-        for j in 0..8 {
-            printk!(" {:02x}", volume_slice[i * 16 + j]);
-        }
-        printk!(" ");
-        for j in 8..16 {
-            printk!(" {:02x}", volume_slice[i * 16 + j]);
-        }
-        printk!("\n");
-    }
 
     loop {
         unsafe { asm!("cli") };

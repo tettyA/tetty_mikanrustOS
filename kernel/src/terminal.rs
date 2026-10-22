@@ -229,6 +229,47 @@ impl Terminal {
                 );
                 self.print(&s);
             }
+        } else if command == "ls" {
+            let bpb = crate::fat::boot_volume_image();
+            let root_dir_entries = unsafe {
+                let ptr = crate::fat::get_sector_by_cluster::<crate::fat::DirectoryEntry>(
+                    bpb.root_cluster as usize,
+                );
+                let count = (bpb.bytes_per_sector as usize
+                    / core::mem::size_of::<crate::fat::DirectoryEntry>())
+                    * bpb.sectors_per_cluster as usize;
+                core::slice::from_raw_parts(ptr, count)
+            };
+
+            let mut base = [0u8; 9];
+            let mut ext = [0u8; 4];
+
+            for entry in root_dir_entries {
+                crate::fat::read_name(entry, &mut base, &mut ext);
+                if base[0] == 0x00 {
+                    // このディレクトリエントリは空いており，これより後ろに有効なディレクトリエントリは存在しない
+                    break;
+                } else if base[0] == 0xe5 {
+                    // このディレクトリは空いており，どんなファイルやディレクトリも表さない。
+                    continue;
+                } else if entry.attr == crate::fat::Attribute::LongName {
+                    // ロングファイル名エントリは飛ばす
+                    continue;
+                }
+
+                let base_len = base.iter().position(|&c| c == 0).unwrap_or(0);
+                let ext_len = ext.iter().position(|&c| c == 0).unwrap_or(0);
+                let base_str = core::str::from_utf8(&base[..base_len]).unwrap_or("");
+                let ext_str = core::str::from_utf8(&ext[..ext_len]).unwrap_or("");
+
+                if !ext_str.is_empty() {
+                    let s = format!("{}.{}\n", base_str, ext_str);
+                    self.print(&s);
+                } else {
+                    let s = format!("{}\n", base_str);
+                    self.print(&s);
+                }
+            }
         } else if !command.is_empty() {
             self.print("no such command: ");
             self.print(command);
