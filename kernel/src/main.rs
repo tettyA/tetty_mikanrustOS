@@ -62,58 +62,6 @@ struct KernelStack([u8; 1024 * 1024]);
 // exclusive stack for kernel
 static KERNEL_STACK: KernelStack = KernelStack([0; 1024 * 1024]);
 
-extern "C" fn task_b(task_id: u64, data: i64, window: u64, layer_id: u64) {
-    printk!("task_b task_id={} data={}\n", task_id, data);
-    // 初期化側でRc::into_rawした所有権をここで引き取る。関数は戻らないのでdropされない。
-    let window: Rc<RefCell<Window>> = unsafe { Rc::from_raw(window as *const RefCell<Window>) };
-    let layer_id = layer_id as u32;
-    let mut count: u32 = 0;
-
-    loop {
-        count += 1;
-        let text = format!("{:010}", count);
-        x86_64::instructions::interrupts::without_interrupts(|| {
-            let mut window_ref = window.borrow_mut();
-            let writer = window_ref.inner_writer();
-            fill_rectrange(
-                &writer,
-                &Vector2D {
-                    x: 20 as usize,
-                    y: 4 as usize,
-                },
-                &Vector2D { x: 8 * 10, y: 16 },
-                &PixelColor {
-                    r: 0xc6,
-                    g: 0xc6,
-                    b: 0xc6,
-                },
-            );
-            write_string(&writer, 20, 4, &text, &PixelColor { r: 0, g: 0, b: 0 });
-        });
-        let _ = send_message(
-            1,
-            Message::Layer {
-                op: message::LayerOperation::Draw,
-                layer_id,
-                src_task: task_id,
-            },
-        );
-        loop {
-            x86_64::instructions::interrupts::disable();
-            let Some(msg) = receive_message(task_id) else {
-                let _ = sleep(task_id);
-                x86_64::instructions::interrupts::enable();
-                continue;
-            };
-
-            x86_64::instructions::interrupts::enable();
-            if msg == Message::LayerFinish {
-                break;
-            }
-        }
-    }
-}
-
 /// 全レイヤーを再描画する (LAYER_MANAGER 初期化前は何もしない)。
 pub fn redraw_layers_all() {
     LAYER_MANAGER.with(|lm| {
@@ -405,27 +353,10 @@ fn KernelMainNewStack(
         .id;
     layer_manager.up_down(text_window_id, 4);
 
-    let task_b_window = Rc::new(RefCell::new(Window::new_toplevel(
-        160,
-        52,
-        frame_buffer_config.pixel_format,
-        "Task B Widnow",
-    )));
-
-    let task_b_window_id = layer_manager
-        .new_layer()
-        .set_window(task_b_window.clone())
-        .set_draggable(true)
-        .move_to(Vector2D { x: 300, y: 200 })
-        .id;
-
-    layer_manager.up_down(task_b_window_id, 4);
-
     layer_manager.up_down(mouse_layer_id, 10);
 
     LAYER_MANAGER.with(|lm| *lm = Some(layer_manager));
     layer::set_mouse_layer(mouse_layer_id);
-    layer::activate(task_b_window_id);
     redraw_layers_all();
     console::init(console);
 
@@ -486,23 +417,9 @@ fn KernelMainNewStack(
 
     // TaskB初期化
 
-    let task_b_window_ptr = Rc::into_raw(task_b_window.clone()) as u64;
-
     initialize_task();
 
     x86_64::instructions::interrupts::enable();
-
-    let task_b_id = TASK_MANAGER.with(|tm| {
-        let tm = tm.as_mut().unwrap();
-        let task_b_id = tm
-            .new_task()
-            .init_context(task_b, 45)
-            .set_extra_args(task_b_window_ptr, task_b_window_id as u64)
-            .id();
-        tm.wakeup(task_b_id, None).unwrap();
-
-        task_b_id
-    });
 
     let task_terminal_id = TASK_MANAGER.with(|tm| {
         let tm = tm.as_mut().unwrap();
@@ -591,12 +508,6 @@ fn KernelMainNewStack(
                 let act = layer::get_active();
                 if act == text_window_id {
                     input_text_window(ascii, &text_window, &mut text_window_index, text_window_id);
-                } else if act == task_b_window_id {
-                    if ascii == 's' {
-                        printk!("sleep taskB: {:?} \n", sleep(task_b_id));
-                    } else if ascii == 'w' {
-                        printk!("wakeup taskB: {:?}\n", wakeup(task_b_id));
-                    }
                 } else if let Some(target_task_id) = layer::get_task_by_layer(act) {
                     let _ = send_message(target_task_id, msg);
                 } else {
