@@ -292,7 +292,7 @@ impl Terminal {
                 let mut remain_bytes = entry.file_size as usize;
 
                 self.draw_cursor(false);
-                while cluster != 0 && cluster != crate::fat::ENF_OF_CLUTERCHAIN {
+                while cluster != 0 && cluster != crate::fat::ENF_OF_CLUSTERCHAIN {
                     let mut bytes_per_cluster = crate::fat::bytes_per_cluster();
                     let p = crate::fat::get_sector_by_cluster::<u8>(cluster);
 
@@ -309,12 +309,43 @@ impl Terminal {
                 self.draw_cursor(true);
             }
         } else if !command.is_empty() {
-            self.print("no such command: ");
-            self.print(command);
-            self.print("\n");
+            let file_entry = crate::fat::find_file(command, 0);
+            if let Some(entry) = file_entry {
+                self.execute_file(&entry);
+            } else {
+                self.print("no such command: ");
+                self.print(command);
+                self.print("\n");
+            }
         }
     }
 
+    fn execute_file(&mut self, file_entry: &crate::fat::DirectoryEntry) {
+        let mut cluster = file_entry.first_cluster() as usize;
+        let mut remain_bytes = file_entry.file_size as usize;
+
+        let mut file_buf = alloc::vec![0u8;remain_bytes];
+        let mut offset = 0;
+
+        while cluster != 0 && cluster != crate::fat::ENF_OF_CLUSTERCHAIN {
+            let bytes_per_cluster = crate::fat::bytes_per_cluster();
+            let copy_bytes = remain_bytes.min(bytes_per_cluster);
+
+            let p = crate::fat::get_sector_by_cluster::<u8>(cluster);
+
+            unsafe {
+                let src = core::slice::from_raw_parts(p, copy_bytes);
+                file_buf[offset..offset + copy_bytes].copy_from_slice(src);
+            }
+
+            offset += copy_bytes;
+            remain_bytes -= copy_bytes;
+            cluster = crate::fat::next_cluster(cluster);
+        }
+
+        let f: extern "C" fn() = unsafe { core::mem::transmute(file_buf.as_ptr()) };
+        f();
+    }
     /// direction = -1 -> 進む +1 -> 戻る
     fn history_updown(&mut self, direction: i32) -> Rectangle<i32> {
         if direction == -1 && self.cmd_history_index >= 0 {

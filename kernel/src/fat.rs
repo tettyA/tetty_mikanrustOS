@@ -123,7 +123,7 @@ pub fn read_name(entry: &DirectoryEntry, base: &mut [u8; 9], ext: &mut [u8; 4]) 
     }
 }
 
-pub const ENF_OF_CLUTERCHAIN: usize = 0x0fff_ffff;
+pub const ENF_OF_CLUSTERCHAIN: usize = 0x0fff_ffff;
 
 pub fn bytes_per_cluster() -> usize {
     let bpb = boot_volume_image();
@@ -139,7 +139,7 @@ pub fn next_cluster(cluster: usize) -> usize {
     let fat = fat_addr as *const u32;
     let next = unsafe { fat.add(cluster).read_unaligned() };
     if next >= 0x0ffff_fff8 {
-        ENF_OF_CLUTERCHAIN
+        ENF_OF_CLUSTERCHAIN
     } else {
         next as usize
     }
@@ -171,7 +171,7 @@ pub fn find_file(name: &str, mut directory_cluster: usize) -> Option<DirectoryEn
     if directory_cluster == 0 {
         directory_cluster = boot_volume_image().root_cluster as usize;
     }
-    while (directory_cluster != ENF_OF_CLUTERCHAIN) {
+    while (directory_cluster != ENF_OF_CLUSTERCHAIN) {
         let entries = unsafe {
             let ptr = get_sector_by_cluster::<DirectoryEntry>(directory_cluster);
             let count = bytes_per_cluster() / core::mem::size_of::<DirectoryEntry>();
