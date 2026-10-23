@@ -311,7 +311,7 @@ impl Terminal {
         } else if !command.is_empty() {
             let file_entry = crate::fat::find_file(command, 0);
             if let Some(entry) = file_entry {
-                self.execute_file(&entry);
+                self.execute_file(&entry, command, first_arg);
             } else {
                 self.print("no such command: ");
                 self.print(command);
@@ -320,7 +320,12 @@ impl Terminal {
         }
     }
 
-    fn execute_file(&mut self, file_entry: &crate::fat::DirectoryEntry) {
+    fn execute_file(
+        &mut self,
+        file_entry: &crate::fat::DirectoryEntry,
+        command: &str,
+        first_arg: Option<&str>,
+    ) {
         let mut cluster = file_entry.first_cluster() as usize;
         let mut remain_bytes = file_entry.file_size as usize;
 
@@ -342,11 +347,54 @@ impl Terminal {
             remain_bytes -= copy_bytes;
             cluster = crate::fat::next_cluster(cluster);
         }
+        if file_buf.len() < 4 {
+            return;
+        }
 
-        let f: extern "C" fn() = unsafe { core::mem::transmute(file_buf.as_ptr()) };
-        x86_64::instructions::interrupts::enable(); // 一応確実に割り込み処理を許可する。
-        f();
+        // ELF形式ではない場合はフラットバイナリとして実行
+        if &file_buf[..4] != b"\x7fELF" {
+            // 先頭4バイトが \x7f E L F ではない
+            let f: extern "C" fn() = unsafe { core::mem::transmute(file_buf.as_ptr()) };
+            x86_64::instructions::interrupts::enable(); // 一応確実に割り込み処理を許可する。
+            f();
+            return;
+        }
+
+        // ELFヘッダの読み込み
+        let ehdr =
+            unsafe { core::ptr::read_unaligned(file_buf.as_ptr() as *const crate::elf::Elf64Ehdr) };
+        // コマンドライン引数の準備
+        let mut args: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec::Vec::new();
+
+        // argv[0] = コマンド名
+        let mut cmd_vec = alloc::vec::Vec::from(command.as_bytes());
+        cmd_vec.push(0); // ヌル終端
+        args.push(cmd_vec);
+
+        // argv[1..] = 引数 (空白区切り)
+        if let Some(arg_str) = first_arg {
+            for part in arg_str.split_ascii_whitespace() {
+                let mut part_vec = alloc::vec::Vec::from(part.as_bytes());
+                part_vec.push(0);
+                args.push(part_vec);
+            }
+        }
+
+        let argv: alloc::vec::Vec<*const u8> = args.iter().map(|arg| arg.as_ptr()).collect();
+
+        // エントリポイントアドレスの計算 (--image-bse 0 でリンクされているから，バッファ先頭+e_entry)
+        let entry_addr = file_buf.as_ptr() as usize + ehdr.e_entry as usize;
+
+        type AppMain = extern "sysv64" fn(i32, *const *const u8) -> i32;
+        let f: AppMain = unsafe { core::mem::transmute(entry_addr) };
+
+        x86_64::instructions::interrupts::enable();
+        let ret = f(argv.len() as i32, argv.as_ptr());
+
+        let s = alloc::format!("app exited. ret = {}\n", ret);
+        self.print(&s);
     }
+
     /// direction = -1 -> 進む +1 -> 戻る
     fn history_updown(&mut self, direction: i32) -> Rectangle<i32> {
         if direction == -1 && self.cmd_history_index >= 0 {

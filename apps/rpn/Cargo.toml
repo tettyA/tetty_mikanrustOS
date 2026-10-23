@@ -1,0 +1,10 @@
+[package]
+name = "rpn"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rpn"
+path = "main.rs"
+test = false
+bench = false
