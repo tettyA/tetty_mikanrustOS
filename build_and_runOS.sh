@@ -28,15 +28,29 @@ cargo build --release -p kernel
 
 cp target/x86_64-unknown-none-elf/release/kernel $ORIGINAL_DIR/kernel.elf
 
-# apps のビルド
-make -C apps/onlyhlt
+# apps 配下の全アプリを自動ビルト
+if [ -d "$ORIGINAL_DIR/apps" ]; then
+    for MK in $(ls $ORIGINAL_DIR/apps/*/Makefile 2>/dev/null || true);
+do
+        APP_DIR=$(dirname $MK)
+        APP=$(basename $APP_DIR)
+        make -C "$APP_DIR" "$APP"
+    done
+fi
 
-# 1. ディスクイメージへの配置 （Loader.efi と kernel.elf を配置）
+# ─── ディスクイメージの作成とファイルのコピー ───
+# 1. ベースイメージの作成
 $HOME/osbook/devenv/make_image.sh ./disk.img ./mnt $ORIGINAL_DIR/Loader.efi $ORIGINAL_DIR/kernel.elf
-
-# 2. ディスクイメージをマウントして onlyhlt を追加コピー
+# 2. マウントして apps 配下の実行ファイルをすべてコピー
 $HOME/osbook/devenv/mount_image.sh ./disk.img ./mnt
-sudo cp apps/onlyhlt/onlyhlt ./mnt/
+if [ -d "$ORIGINAL_DIR/apps" ]; then
+    for APP in $(ls "$ORIGINAL_DIR/apps"); do
+        if [ -f "$ORIGINAL_DIR/apps/$APP/$APP" ]; then
+            sudo cp "$ORIGINAL_DIR/apps/$APP/$APP" ./mnt/
+        fi
+    done
+fi
+
 sleep 0.5
 sudo umount ./mnt
 
