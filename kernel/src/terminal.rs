@@ -344,6 +344,7 @@ impl Terminal {
         }
 
         let f: extern "C" fn() = unsafe { core::mem::transmute(file_buf.as_ptr()) };
+        x86_64::instructions::interrupts::enable(); // 一応確実に割り込み処理を許可する。
         f();
     }
     /// direction = -1 -> 進む +1 -> 戻る
@@ -517,9 +518,8 @@ pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64
                 modifier,
                 ascii,
             } => {
-                let area = x86_64::instructions::interrupts::without_interrupts(|| {
-                    terminal.input_key(modifier, keycode, ascii)
-                });
+                let area = terminal.input_key(modifier, keycode, ascii);
+
                 let _ = task::send_message(
                     1,
                     Message::Layer {
