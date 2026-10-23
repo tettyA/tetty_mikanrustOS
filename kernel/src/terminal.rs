@@ -158,29 +158,32 @@ impl Terminal {
             self.scroll1();
         }
     }
+    pub fn print_char(&mut self, c: u8) {
+        if c == b'\n' {
+            self.newline();
+        } else {
+            let pos = self.calc_cursor_pos();
+            write_ascii(
+                &self.window.borrow_mut().writer(),
+                pos.x,
+                pos.y,
+                c,
+                &to_color(0xffffff),
+            );
+
+            if self.cursor.x == Self::COLUMNS - 1 {
+                self.newline();
+            } else {
+                self.cursor.x += 1;
+            }
+        }
+    }
 
     pub fn print(&mut self, s: &str) {
         self.draw_cursor(false);
 
-        for c in s.chars() {
-            if c == '\n' {
-                self.newline();
-            } else {
-                let pos = self.calc_cursor_pos();
-                write_ascii(
-                    &self.window.borrow_mut().writer(),
-                    pos.x,
-                    pos.y,
-                    c as u8,
-                    &to_color(0xffffff),
-                );
-
-                if self.cursor.x == Self::COLUMNS - 1 {
-                    self.newline();
-                } else {
-                    self.cursor.x += 1;
-                }
-            }
+        for &c in s.as_bytes() {
+            self.print_char(c);
         }
 
         self.draw_cursor(true);
@@ -279,6 +282,31 @@ impl Terminal {
                     let s = format!("{}\n", base_str);
                     self.print(&s);
                 }
+            }
+        } else if command == "cat" {
+            let file_name = first_arg.unwrap_or("");
+            let file_entry = crate::fat::find_file(file_name, 0);
+
+            if let Some(entry) = file_entry {
+                let mut cluster = entry.first_cluster() as usize;
+                let mut remain_bytes = entry.file_size as usize;
+
+                self.draw_cursor(false);
+                while cluster != 0 && cluster != crate::fat::ENF_OF_CLUTERCHAIN {
+                    let mut bytes_per_cluster = crate::fat::bytes_per_cluster();
+                    let p = crate::fat::get_sector_by_cluster::<u8>(cluster);
+
+                    let read_bytes = remain_bytes.min(bytes_per_cluster);
+                    let slice = unsafe { core::slice::from_raw_parts(p, read_bytes) };
+
+                    for &byte in slice {
+                        self.print_char(byte);
+                    }
+
+                    remain_bytes -= read_bytes;
+                    cluster = crate::fat::next_cluster(cluster);
+                }
+                self.draw_cursor(true);
             }
         } else if !command.is_empty() {
             self.print("no such command: ");

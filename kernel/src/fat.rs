@@ -122,3 +122,71 @@ pub fn read_name(entry: &DirectoryEntry, base: &mut [u8; 9], ext: &mut [u8; 4]) 
         }
     }
 }
+
+pub const ENF_OF_CLUTERCHAIN: usize = 0x0fff_ffff;
+
+pub fn bytes_per_cluster() -> usize {
+    let bpb = boot_volume_image();
+    bpb.bytes_per_sector as usize * bpb.sectors_per_cluster as usize
+}
+
+/// 指定されたクラスタの次のクラスタ番号を返す
+/// 次のクラスタが存在しない場合は，ENF_OF_CLUSTERCHINを返す
+pub fn next_cluster(cluster: usize) -> usize {
+    let bpb = boot_volume_image();
+    let fat_offset = bpb.reserved_sector_count as usize * bpb.bytes_per_sector as usize;
+    let fat_addr = get_volume_image_addr() + fat_offset;
+    let fat = fat_addr as *const u32;
+    let next = unsafe { fat.add(cluster).read_unaligned() };
+    if next >= 0x0ffff_fff8 {
+        ENF_OF_CLUTERCHAIN
+    } else {
+        next as usize
+    }
+}
+
+/// ディレクトリエントリのファイル名と指定された名前(8.3)が一致するか判定する
+pub fn name_is_equal(entry: &DirectoryEntry, name: &str) -> bool {
+    let mut name83 = [0x20u8; 11];
+    let mut i83 = 0;
+
+    for &b in name.as_bytes() {
+        if i83 >= 11 {
+            break;
+        }
+        if b == b'.' {
+            i83 = 8;
+            continue;
+        }
+        name83[i83] = b.to_ascii_uppercase();
+        i83 += 1;
+    }
+
+    entry.name == name83
+}
+
+/// 指定されたディレクトリからファイルを探す。
+/// directory_cluster が 0 の場合はルートディレクトリから検索する。
+pub fn find_file(name: &str, mut directory_cluster: usize) -> Option<DirectoryEntry> {
+    if directory_cluster == 0 {
+        directory_cluster = boot_volume_image().root_cluster as usize;
+    }
+    while (directory_cluster != ENF_OF_CLUTERCHAIN) {
+        let entries = unsafe {
+            let ptr = get_sector_by_cluster::<DirectoryEntry>(directory_cluster);
+            let count = bytes_per_cluster() / core::mem::size_of::<DirectoryEntry>();
+
+            core::slice::from_raw_parts(ptr, count)
+        };
+        for entry in entries {
+            if entry.name[0] == 0x00 {
+                return None; // 以降に有効なエントリは存在しない
+            }
+            if name_is_equal(entry, name) {
+                return Some(*entry);
+            }
+        }
+        directory_cluster = next_cluster(directory_cluster);
+    }
+    None
+}
