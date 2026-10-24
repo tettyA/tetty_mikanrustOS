@@ -1,15 +1,15 @@
-use crate::font::{write_ascii, write_string};
+use crate::font::write_ascii;
 use crate::global::Global;
-use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Rectangle, Vector2D};
+use crate::graphics::{PixelColor, PixelDraw, Rectangle, Vector2D};
 use crate::window::Window;
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use core::fmt::{self, Arguments, Write};
 
-static CONSOLE: Global<Option<Console<'static>>> = Global::new(None);
+static CONSOLE: Global<Option<Console>> = Global::new(None);
 
 /// Initialize the kernel-wide console. Calls before initialization are discarded.
-pub fn init(console: Console<'static>) {
+pub fn init(console: Console) {
     CONSOLE.with(|c| *c = Some(console));
 }
 
@@ -32,36 +32,32 @@ macro_rules! printk {
     };
 }
 
-pub enum ConsoleWriter<'a> {
-    Pixel(&'a PixelWriter),
+pub enum ConsoleWriter {
     Window(Rc<RefCell<Window>>),
 }
 
-impl PixelDraw for ConsoleWriter<'_> {
+impl PixelDraw for ConsoleWriter {
     fn write(&self, x: usize, y: usize, c: &PixelColor) {
         match self {
-            Self::Pixel(writer) => writer.write(x, y, c),
             Self::Window(window) => window.borrow_mut().write(x, y, *c),
         }
     }
 
     fn width(&self) -> usize {
         match self {
-            Self::Pixel(writer) => writer.width(),
             Self::Window(window) => window.borrow_mut().width(),
         }
     }
 
     fn height(&self) -> usize {
         match self {
-            Self::Pixel(writer) => writer.height(),
             Self::Window(window) => window.borrow_mut().height(),
         }
     }
 }
 
-pub struct Console<'a> {
-    writer: ConsoleWriter<'a>,
+pub struct Console {
+    writer: ConsoleWriter,
     fg_color: PixelColor,
     bg_color: PixelColor,
 
@@ -72,17 +68,17 @@ pub struct Console<'a> {
     layer_id: u32,
 }
 
-impl<'a> fmt::Write for Console<'a> {
+impl fmt::Write for Console {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.put_string(&s);
         Ok(())
     }
 }
 
-impl<'a> Console<'a> {
+impl Console {
     pub const ROW_NUM: usize = 25;
     pub const COLUMN_NUM: usize = 80;
-    pub fn new(writer: ConsoleWriter<'a>, fg_color: PixelColor, bg_color: PixelColor) -> Self {
+    pub fn new(writer: ConsoleWriter, fg_color: PixelColor, bg_color: PixelColor) -> Self {
         Self {
             writer,
             fg_color,
@@ -94,9 +90,6 @@ impl<'a> Console<'a> {
             layer_id: 0,
         }
     }
-    pub fn set_writer(&mut self, writer: ConsoleWriter<'a>) {
-        self.writer = writer;
-    }
     pub fn set_redraw(&mut self, redraw: fn(u32)) {
         self.redraw = Some(redraw);
     }
@@ -105,17 +98,6 @@ impl<'a> Console<'a> {
     }
     pub fn get_layer_id(&self) -> u32 {
         self.layer_id
-    }
-    pub fn refresh(&self) {
-        for r in 0..Self::ROW_NUM {
-            write_string(
-                &self.writer,
-                0,
-                16 * r,
-                core::str::from_utf8(&self.buffer[r]).unwrap(),
-                &self.fg_color,
-            );
-        }
     }
     pub fn put_string(&mut self, str: &str) {
         for c in str.bytes() {
@@ -145,24 +127,6 @@ impl<'a> Console<'a> {
         }
 
         match &self.writer {
-            ConsoleWriter::Pixel(_) => {
-                for y in 0..16 * Self::ROW_NUM {
-                    for x in 0..8 * Self::COLUMN_NUM {
-                        self.writer.write(x, y, &self.bg_color);
-                    }
-                }
-                for y in 0..(Self::ROW_NUM - 1) {
-                    self.buffer[y] = self.buffer[y + 1];
-                    write_string(
-                        &self.writer,
-                        0,
-                        16 * y,
-                        &(core::str::from_utf8(&self.buffer[y]).unwrap()),
-                        &self.fg_color,
-                    );
-                }
-                self.buffer[Self::ROW_NUM - 1] = [0; Self::COLUMN_NUM];
-            }
             ConsoleWriter::Window(ref_cell) => {
                 for row in 0..Self::ROW_NUM - 1 {
                     self.buffer[row] = self.buffer[row + 1];

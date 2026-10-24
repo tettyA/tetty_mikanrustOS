@@ -3,13 +3,12 @@ use core::{cell::RefCell, ptr::read_unaligned};
 
 use crate::{
     elf::{self, ET_EXEC, Elf64Ehdr, Elf64Phdr},
-    error::Error::{self, kNoEnoughMemory},
     font::{write_ascii, write_string},
-    graphics::{Rectangle, Vector2D, fill_rectrange, to_color},
-    layer::{LAYER_MANAGER, LayerManager},
+    graphics::{Rectangle, Vector2D, fill_rectangle, to_color},
+    layer::LAYER_MANAGER,
     message::{LayerOperation, Message},
     paging::{LinearAddress4Level, clean_page_maps, setup_page_maps},
-    pci, printk, redraw_layers_id,
+    pci,
     task::{self, receive_message},
     window::{MARGIN_X, MARGIN_Y, TOP_LEFT_MARGIN, Window, draw_terminal},
 };
@@ -111,7 +110,7 @@ impl Terminal {
 
         let pos = self.calc_cursor_pos();
 
-        crate::graphics::fill_rectrange(
+        crate::graphics::fill_rectangle(
             &self.window.borrow_mut().writer(),
             &pos,
             &Vector2D { x: 7, y: 15 },
@@ -139,7 +138,7 @@ impl Terminal {
             &move_src,
         );
 
-        fill_rectrange(
+        fill_rectangle(
             &self.window.borrow_mut().inner_writer(),
             &Vector2D {
                 x: 4,
@@ -266,7 +265,7 @@ impl Terminal {
             }
             self.print("\n");
         } else if command == "clear" {
-            fill_rectrange(
+            fill_rectangle(
                 &self.window.borrow_mut().inner_writer(),
                 &Vector2D { x: 4, y: 4 },
                 &Vector2D {
@@ -354,8 +353,8 @@ impl Terminal {
                 let mut remain_bytes = entry.file_size as usize;
 
                 self.draw_cursor(false);
-                while cluster != 0 && cluster != crate::fat::ENF_OF_CLUSTERCHAIN {
-                    let mut bytes_per_cluster = crate::fat::bytes_per_cluster();
+                while cluster != 0 && cluster != crate::fat::END_OF_CLUSTER_CHAIN {
+                    let bytes_per_cluster = crate::fat::bytes_per_cluster();
                     let p = crate::fat::get_sector_by_cluster::<u8>(cluster);
 
                     let read_bytes = remain_bytes.min(bytes_per_cluster);
@@ -394,7 +393,7 @@ impl Terminal {
         let mut file_buf = alloc::vec![0u8;remain_bytes];
         let mut offset = 0;
 
-        while cluster != 0 && cluster != crate::fat::ENF_OF_CLUSTERCHAIN {
+        while cluster != 0 && cluster != crate::fat::END_OF_CLUSTER_CHAIN {
             let bytes_per_cluster = crate::fat::bytes_per_cluster();
             let copy_bytes = remain_bytes.min(bytes_per_cluster);
 
@@ -487,7 +486,7 @@ impl Terminal {
             },
         };
 
-        fill_rectrange(
+        fill_rectangle(
             &self.window.borrow_mut().writer(),
             &first_pos,
             &Vector2D {
@@ -557,7 +556,7 @@ impl Terminal {
             // Backspace
             if self.cursor.x > 0 {
                 self.cursor.x -= 1;
-                fill_rectrange(
+                fill_rectangle(
                     &self.window.borrow_mut().writer(),
                     &self.calc_cursor_pos(),
                     &Vector2D { x: 8, y: 16 },

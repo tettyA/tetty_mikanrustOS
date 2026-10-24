@@ -13,8 +13,6 @@
 //! ```
 #![allow(non_snake_case, dead_code)]
 
-use core::arch::asm;
-
 use crate::usb;
 use crate::usb::Error;
 /// `pci::ClassCode` : PCI デバイスのクラスコード．
@@ -92,6 +90,6 @@ pub fn initialize_pci() {
 /// タスク初期化の後に呼ぶ。キーボードの obserever はこれより前に設定しておくこと。
 /// xHCI を初期化すると，割込みが来初める。宛先のメインタスクが先にある必要があるのでタスク初期化の後に呼ぶ。
 pub fn initialize_usb() {
-    usb::HIDMouseDriver::set_default_observer(crate::mousecursor::MouseObserver);
+    usb::HIDMouseDriver::set_default_observer(crate::mousecursor::mouse_observer);
     usb::xhci::Initialize();
 }

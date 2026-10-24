@@ -123,7 +123,7 @@ pub fn read_name(entry: &DirectoryEntry, base: &mut [u8; 9], ext: &mut [u8; 4]) 
     }
 }
 
-pub const ENF_OF_CLUSTERCHAIN: usize = 0x0fff_ffff;
+pub const END_OF_CLUSTER_CHAIN: usize = 0x0fff_ffff;
 
 pub fn bytes_per_cluster() -> usize {
     let bpb = boot_volume_image();
@@ -131,7 +131,7 @@ pub fn bytes_per_cluster() -> usize {
 }
 
 /// 指定されたクラスタの次のクラスタ番号を返す
-/// 次のクラスタが存在しない場合は，ENF_OF_CLUSTERCHINを返す
+/// 次のクラスタが存在しない場合は，END_OF_CLUSTER_CHAINを返す
 pub fn next_cluster(cluster: usize) -> usize {
     let bpb = boot_volume_image();
     let fat_offset = bpb.reserved_sector_count as usize * bpb.bytes_per_sector as usize;
@@ -139,7 +139,7 @@ pub fn next_cluster(cluster: usize) -> usize {
     let fat = fat_addr as *const u32;
     let next = unsafe { fat.add(cluster).read_unaligned() };
     if next >= 0x0ffff_fff8 {
-        ENF_OF_CLUSTERCHAIN
+        END_OF_CLUSTER_CHAIN
     } else {
         next as usize
     }
@@ -171,7 +171,7 @@ pub fn find_file(name: &str, mut directory_cluster: usize) -> Option<DirectoryEn
     if directory_cluster == 0 {
         directory_cluster = boot_volume_image().root_cluster as usize;
     }
-    while (directory_cluster != ENF_OF_CLUSTERCHAIN) {
+    while directory_cluster != END_OF_CLUSTER_CHAIN {
         let entries = unsafe {
             let ptr = get_sector_by_cluster::<DirectoryEntry>(directory_cluster);
             let count = bytes_per_cluster() / core::mem::size_of::<DirectoryEntry>();

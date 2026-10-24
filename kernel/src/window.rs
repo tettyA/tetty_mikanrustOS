@@ -5,7 +5,7 @@ use crate::{
     font::write_string,
     frame_buffer::FrameBuffer,
     frame_buffer_config::{FrameBufferConfig, PixelFormat},
-    graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, fill_rectrange, to_color},
+    graphics::{PixelColor, PixelDraw, Rectangle, Vector2D, fill_rectangle, to_color},
 };
 
 const K_CLOSE_BUTTON_WIDTH: usize = 16;
@@ -37,7 +37,7 @@ pub fn draw_window_title<T: PixelDraw>(writer: &T, title: &str, active: bool) {
     let win_w = writer.width();
     let bgcolor = if active { 0x000084 } else { 0x848484 };
 
-    fill_rectrange(
+    fill_rectangle(
         writer,
         &Vector2D { x: 3, y: 3 },
         &Vector2D {
@@ -65,7 +65,7 @@ pub fn draw_window_title<T: PixelDraw>(writer: &T, title: &str, active: bool) {
 
 pub fn draw_window<T: PixelDraw>(writer: &T, title: &str) {
     let fill_rect = |posx: usize, posy: usize, sizew: usize, sizeh: usize, c: u32| {
-        fill_rectrange(
+        fill_rectangle(
             writer,
             &Vector2D { x: posx, y: posy },
             &Vector2D { x: sizew, y: sizeh },
@@ -99,7 +99,7 @@ pub fn draw_textbox_with_color<T: PixelDraw>(
     border_dark: u32,
 ) {
     let fill_rect = |pos: Vector2D<usize>, size: Vector2D<usize>, c: u32| {
-        fill_rectrange(
+        fill_rectangle(
             writer,
             &Vector2D { x: pos.x, y: pos.y },
             &Vector2D {
@@ -292,11 +292,6 @@ impl Window {
             window: self as *mut Window,
             _marker: PhantomData,
         }
-    }
-
-    /// return specified PixelColor.
-    pub fn at(&self, x: usize, y: usize) -> PixelColor {
-        self.data[y][x]
     }
 
     /// return width

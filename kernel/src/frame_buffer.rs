@@ -232,39 +232,6 @@ impl FrameBuffer {
         }
     }
 
-    pub fn draw_to<W: PixelDraw>(&self, writer: &W, pos: Vector2D<i32>) {
-        let bytes_per_pixel = 4;
-        let slice = self.get_slice();
-
-        for y in 0..self.config.vertical_resolution as usize {
-            let dst_y = pos.y + y as i32;
-            if dst_y < 0 {
-                continue;
-            }
-            for x in 0..self.config.horizontal_resolution as usize {
-                let dst_x = pos.x + x as i32;
-                if dst_x < 0 {
-                    continue;
-                }
-
-                let offset = (y * self.config.pixels_per_scan_line as usize + x) * bytes_per_pixel;
-                let c = match self.config.pixel_format {
-                    PixelFormat::kPixelRGBResv8BitPerColor => PixelColor {
-                        r: slice[offset],
-                        g: slice[offset + 1],
-                        b: slice[offset + 2],
-                    },
-                    PixelFormat::kPixelBGRResv8BitPerColor => PixelColor {
-                        r: slice[offset + 2],
-                        g: slice[offset + 1],
-                        b: slice[offset],
-                    },
-                };
-                writer.write(dst_x as usize, dst_y as usize, &c);
-            }
-        }
-    }
-
     pub fn writer(&mut self) -> FrameBufferWriter<'_> {
         FrameBufferWriter {
             frame_buffer: self,
@@ -279,24 +246,8 @@ fn bytes_per_pixel(format: &PixelFormat) -> i32 {
         PixelFormat::kPixelBGRResv8BitPerColor => 4,
     }
 }
-fn frame_addr_at(pos: Vector2D<i32>, config: &FrameBufferConfig) -> *mut u8 {
-    unsafe {
-        config.frame_buffer.add(
-            (bytes_per_pixel(&config.pixel_format)
-                * (config.pixels_per_scan_line as i32 * pos.y + pos.x)) as usize,
-        )
-    }
-}
-
 fn bytes_per_scan_line(config: &FrameBufferConfig) -> i32 {
     bytes_per_pixel(&config.pixel_format) * config.pixels_per_scan_line as i32
-}
-
-fn frame_buffer_size(config: &FrameBufferConfig) -> Vector2D<i32> {
-    Vector2D {
-        x: config.horizontal_resolution as i32,
-        y: config.vertical_resolution as i32,
-    }
 }
 
 pub struct FrameBufferWriter<'a> {

@@ -1,7 +1,6 @@
 use core::arch::asm;
 
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
-use x86_64::registers::model_specific::Msr;
 
 use crate::{
     global::Global,
@@ -128,7 +127,7 @@ pub fn read_cr3() -> u64 {
 }
 
 /// 実行可能なタスクが他に無い時に動く。level 0
-extern "C" fn task_idle(task_id: u64, data: i64, _arg3: u64, _arg4: u64) {
+extern "C" fn task_idle(_task_id: u64, _data: i64, _arg3: u64, _arg4: u64) {
     loop {
         x86_64::instructions::hlt();
     }
@@ -197,12 +196,6 @@ impl Task {
         // MXCSR の全ての例外をマスクする
         self.context.fxsave_area[24..28].copy_from_slice(&0x1f80u32.to_le_bytes());
 
-        self
-    }
-
-    pub fn set_extra_args(&mut self, arg3: u64, arg4: u64) -> &mut Self {
-        self.context.rdx = arg3;
-        self.context.rcx = arg4;
         self
     }
 
@@ -365,7 +358,7 @@ impl TaskManager {
         self.wakeup(id, None)
     }
     /// メッセージキューから先頭のメッセージを1つ取り出す。
-    fn recieve_message(&mut self, id: u64) -> Option<Message> {
+    fn receive_message(&mut self, id: u64) -> Option<Message> {
         self.task_mut(id)?.msgs.pop_front()
     }
 
@@ -394,10 +387,6 @@ pub fn sleep(id: u64) -> Result<(), TaskError> {
     })
 }
 
-pub fn wakeup(id: u64) -> Result<(), TaskError> {
-    TASK_MANAGER.with(|tm| tm.as_mut().unwrap().wakeup(id, None))
-}
-
 /// 割込みハンドラからも呼ぶ。TASK_MANAGER未初期化ならErrを返す
 pub fn send_message(id: u64, msg: Message) -> Result<(), TaskError> {
     TASK_MANAGER.with(|tm| match tm {
@@ -407,7 +396,7 @@ pub fn send_message(id: u64, msg: Message) -> Result<(), TaskError> {
 }
 
 pub fn receive_message(id: u64) -> Option<Message> {
-    TASK_MANAGER.with(|tm| tm.as_mut().and_then(|tm| tm.recieve_message(id)))
+    TASK_MANAGER.with(|tm| tm.as_mut().and_then(|tm| tm.receive_message(id)))
 }
 
 pub fn initialize_task() {

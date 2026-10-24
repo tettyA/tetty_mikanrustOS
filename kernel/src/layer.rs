@@ -1,6 +1,6 @@
-use core::{cell::RefCell, ptr::null_mut, task};
+use core::{cell::RefCell, ptr::null_mut};
 
-use crate::{global::Global, layer, message::LayerOperation};
+use crate::{global::Global, message::LayerOperation};
 
 use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, vec::Vec};
 
@@ -12,7 +12,6 @@ use crate::{
 
 pub struct Layer {
     pub id: u32,
-    z: i32,
     pub pos: Vector2D<i32>,
     window: Option<Rc<RefCell<Window>>>,
     draggable: bool,
@@ -22,7 +21,6 @@ impl Layer {
     pub fn new(id: u32) -> Self {
         Self {
             id,
-            z: -1,
             pos: Vector2D { x: 0, y: 0 },
             window: None,
             draggable: false,
@@ -48,11 +46,6 @@ impl Layer {
     pub fn move_relative(&mut self, pos_diff: Vector2D<i32>) -> &mut Self {
         self.pos += pos_diff;
         self
-    }
-    pub fn draw_to(&self, frame_buffer: &mut FrameBuffer) {
-        if let Some(window) = &self.window {
-            window.borrow().draw_to(frame_buffer, self.pos);
-        }
     }
 }
 
@@ -158,7 +151,7 @@ impl LayerManager {
         }
     }
 
-    pub fn move_layer_rerative(&mut self, id: u32, pos_relative: Vector2D<i32>) {
+    pub fn move_layer_relative(&mut self, id: u32, pos_relative: Vector2D<i32>) {
         let mut old_area = None;
         let mut new_area = None;
         if let Some(layer) = self.find_layer(id) {
@@ -191,9 +184,6 @@ impl LayerManager {
 
     pub fn hide_layer(&mut self, id: u32) {
         self.layer_stack.retain(|&x| x != id);
-    }
-    pub fn show_layer(&mut self, id: u32, new_z: i32) {
-        self.up_down(id, new_z);
     }
     pub fn activate(&mut self, layer_id: u32) {
         if self.active_layer == layer_id {
@@ -354,7 +344,7 @@ pub fn process_layer_message(op: LayerOperation, layer_id: u32) {
                 lm.move_layer(layer_id, Vector2D { x, y });
             }
             LayerOperation::MoveRelative { x, y } => {
-                lm.move_layer_rerative(layer_id, Vector2D { x, y });
+                lm.move_layer_relative(layer_id, Vector2D { x, y });
             }
             LayerOperation::Draw => {
                 lm.draw_id(layer_id);

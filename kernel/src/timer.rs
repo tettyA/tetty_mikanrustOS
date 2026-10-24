@@ -1,8 +1,7 @@
-use alloc::vec::{self, Vec};
+use alloc::vec::Vec;
 
 use crate::interrupts::InterruptVector;
 use crate::message::Message;
-use crate::queue::Queue;
 use crate::{acpi, global::Global};
 use core::ptr::{self, write_volatile};
 const COUNT_MAX: u32 = 0xFFFF_FFFF;

@@ -1,19 +1,18 @@
 use crate::global::Global;
-use crate::{console, layer, printk};
+use crate::printk;
 use crate::{
     graphics::{PixelColor, PixelDraw, Vector2D},
     layer::LAYER_MANAGER,
-    timer,
 };
 
-pub const kMouseCursorWidth: usize = 15;
-pub const kMouseCursorHeight: usize = 24;
+pub const MOUSE_CURSOR_WIDTH: usize = 15;
+pub const MOUSE_CURSOR_HEIGHT: usize = 24;
 pub const MOUSE_CURSOR_TRANSPARENT_COLOR: PixelColor = PixelColor {
     r: 255,
     g: 0,
     b: 255,
 };
-const MOUSE_CURSOR_SHAPE: [&'static str; kMouseCursorHeight] = [
+const MOUSE_CURSOR_SHAPE: [&'static str; MOUSE_CURSOR_HEIGHT] = [
     "@              ",
     "@@             ",
     "@.@            ",
@@ -119,7 +118,7 @@ impl MouseCursor {
                 self.drag_layer_id = target_layer_id;
                 crate::layer::activate(target_layer_id);
                 printk!(
-                    "MouseObserver: layer_id = {}, pos = ({}, {})\n",
+                    "mouse_observer: layer_id = {}, pos = ({}, {})\n",
                     self.drag_layer_id,
                     self.position.x,
                     self.position.y
@@ -132,7 +131,7 @@ impl MouseCursor {
             if self.drag_layer_id > 0 {
                 LAYER_MANAGER.with(|lm| {
                     if let Some(lm) = lm {
-                        lm.move_layer_rerative(
+                        lm.move_layer_relative(
                             self.drag_layer_id,
                             Vector2D {
                                 x: posdiff[0],
@@ -178,7 +177,7 @@ pub static MOUSE_CURSOR: Global<MouseCursor> = Global::new(MouseCursor::new());
 
 /// `usb::HIDMouseDriver` に登録するオブザーバ (本家 main.cpp の `MouseObserver` 相当)．
 /// ボタン状態は現状使わず，変位だけをカーソル移動に反映する．
-pub extern "C" fn MouseObserver(_buttons: u8, displacement_x: i8, displacement_y: i8) {
+pub extern "C" fn mouse_observer(_buttons: u8, displacement_x: i8, displacement_y: i8) {
     MOUSE_CURSOR.with(|cursor| unsafe {
         cursor.move_relative(
             _buttons,

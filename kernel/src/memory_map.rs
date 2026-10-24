@@ -20,6 +20,10 @@ pub struct MemoryDescriptor {
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u32)]
 #[allow(non_camel_case_types)] // 本家 MikanOS と名前を揃えているため
+#[allow(
+    dead_code,
+    reason = "UEFI から渡される値を transmute で読むので、Rust 側で構築されない"
+)]
 pub enum MemoryType {
     kEfiReservedMemoryType = 0,
     kEfiLoaderCode = 1,
@@ -69,5 +73,3 @@ impl MemoryType {
         }
     }
 }
-
-const UEFI_PAGE_SIZE: usize = 4096;

@@ -21,7 +21,6 @@ mod message;
 mod mousecursor;
 mod paging;
 mod pci;
-mod queue;
 mod segment;
 mod task;
 mod terminal;
@@ -34,7 +33,7 @@ use crate::font::{write_ascii, write_string};
 use crate::frame_buffer::FrameBuffer;
 use crate::frame_buffer_config::FrameBufferConfig;
 use crate::graphics::{
-    PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectrange, fill_rectrange, to_color,
+    PixelColor, PixelDraw, Rectangle, Vector2D, draw_rectangle, fill_rectangle, to_color,
 };
 use crate::interrupts::init_idt;
 use crate::keyboard::initialize_keyboard;
@@ -42,11 +41,11 @@ use crate::layer::{LAYER_MANAGER, LayerManager};
 use crate::memory_manager::initialize_memory_manager;
 use crate::memory_map::MemoryMap;
 use crate::message::Message;
-use crate::mousecursor::{MOUSE_CURSOR, kMouseCursorHeight, kMouseCursorWidth};
+use crate::mousecursor::{MOUSE_CURSOR, MOUSE_CURSOR_HEIGHT, MOUSE_CURSOR_WIDTH};
 use crate::pci::{initialize_pci, initialize_usb};
-use crate::task::{TASK_MANAGER, initialize_task, receive_message, send_message, sleep, wakeup};
+use crate::task::{TASK_MANAGER, initialize_task, receive_message, send_message, sleep};
 use crate::timer::{TIMER_FREQ, TIMER_MANAGER};
-use crate::window::{Window, draw_textbox, draw_window};
+use crate::window::{Window, draw_textbox};
 use alloc::format;
 use alloc::rc::Rc;
 use core::arch::asm;
@@ -87,8 +86,9 @@ pub fn redraw_layers_id(id: u32) {
 pub fn redraw_mouse_area(old_pos: Vector2D<i32>, new_pos: Vector2D<i32>) {
     let left = old_pos.x.min(new_pos.x);
     let top = old_pos.y.min(new_pos.y);
-    let right = (old_pos.x + kMouseCursorWidth as i32).max(new_pos.x + kMouseCursorWidth as i32);
-    let bottom = (old_pos.y + kMouseCursorHeight as i32).max(new_pos.y + kMouseCursorHeight as i32);
+    let right = (old_pos.x + MOUSE_CURSOR_WIDTH as i32).max(new_pos.x + MOUSE_CURSOR_WIDTH as i32);
+    let bottom =
+        (old_pos.y + MOUSE_CURSOR_HEIGHT as i32).max(new_pos.y + MOUSE_CURSOR_HEIGHT as i32);
     LAYER_MANAGER.with(|lm| {
         if let Some(lm) = lm {
             lm.draw_area(Rectangle {
@@ -117,7 +117,7 @@ pub extern "C" fn KernelMain(
         "mov rsp, {stack}",
         "call {func}",
         stack=in(reg) kernel_main_stack_top_addr,
-        func=sym KernelMainNewStack,
+        func=sym kernel_main_new_stack,
         in("rdi") frame_buffer_config,
         in("rsi") memory_map,
         in("rdx") acpi_table,
@@ -128,7 +128,7 @@ pub extern "C" fn KernelMain(
 }
 
 fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height: usize) {
-    fill_rectrange(
+    fill_rectangle(
         pixel_writer,
         &Vector2D { x: 0, y: 0 },
         &Vector2D {
@@ -137,7 +137,7 @@ fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height
         },
         &PixelColor { r: 255, g: 0, b: 0 },
     );
-    fill_rectrange(
+    fill_rectangle(
         pixel_writer,
         &Vector2D { x: 0, y: 0 },
         &Vector2D {
@@ -146,7 +146,7 @@ fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height
         },
         &DESKTOP_BGCOLOR,
     );
-    fill_rectrange(
+    fill_rectangle(
         pixel_writer,
         &Vector2D {
             x: 0,
@@ -159,7 +159,7 @@ fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height
         &DESKTOP_FGCOLOR,
     );
 
-    fill_rectrange(
+    fill_rectangle(
         pixel_writer,
         &Vector2D {
             x: 0,
@@ -176,7 +176,7 @@ fn draw_desktop<W: PixelDraw>(pixel_writer: &W, frame_width: usize, frame_height
         },
     );
 
-    draw_rectrange(
+    draw_rectangle(
         pixel_writer,
         &Vector2D {
             x: 10,
@@ -201,7 +201,7 @@ fn draw_text_cursor(writer: &impl PixelDraw, text_window_index: usize, visible: 
     } else {
         &to_color(0xffffff)
     };
-    fill_rectrange(writer, &pos, &Vector2D { x: 7, y: 15 }, color);
+    fill_rectangle(writer, &pos, &Vector2D { x: 7, y: 15 }, color);
 }
 
 fn input_text_window(
@@ -227,7 +227,7 @@ fn input_text_window(
             if *text_window_index > 0 {
                 draw_text_cursor(&text_window_writer, *text_window_index, false);
                 *text_window_index -= 1;
-                fill_rectrange(
+                fill_rectangle(
                     &text_window_writer,
                     &pos(*text_window_index),
                     &Vector2D { x: 8, y: 16 },
@@ -247,7 +247,7 @@ fn input_text_window(
     redraw_layers_id(text_window_layer_id);
 }
 
-fn KernelMainNewStack(
+fn kernel_main_new_stack(
     frame_buffer_config: &FrameBufferConfig,
     memory_map: &MemoryMap,
     acpi_table: &acpi::Rsdp,
@@ -273,8 +273,8 @@ fn KernelMainNewStack(
 
     let bg_window = Rc::new(RefCell::new(bg_window));
     let mouse_window = Rc::new(RefCell::new(Window::new(
-        kMouseCursorWidth,
-        kMouseCursorHeight,
+        MOUSE_CURSOR_WIDTH,
+        MOUSE_CURSOR_HEIGHT,
         frame_buffer_config.pixel_format,
     )));
     let main_window = Rc::new(RefCell::new(Window::new_toplevel(
@@ -315,7 +315,7 @@ fn KernelMainNewStack(
     {
         let mut cw_ref = console_window.borrow_mut();
         let cw_writer = cw_ref.writer();
-        fill_rectrange(
+        fill_rectangle(
             &cw_writer,
             &Vector2D { x: 0, y: 0 },
             &Vector2D {
@@ -385,12 +385,12 @@ fn KernelMainNewStack(
             {
                 let mut mouse_window_ref = mouse_window.borrow_mut();
                 let mouse_writer = mouse_window_ref.writer();
-                fill_rectrange(
+                fill_rectangle(
                     &mouse_writer,
                     &Vector2D { x: 0, y: 0 },
                     &Vector2D {
-                        x: kMouseCursorWidth,
-                        y: kMouseCursorHeight,
+                        x: MOUSE_CURSOR_WIDTH,
+                        y: MOUSE_CURSOR_HEIGHT,
                     },
                     &crate::mousecursor::MOUSE_CURSOR_TRANSPARENT_COLOR,
                 );
@@ -446,7 +446,7 @@ fn KernelMainNewStack(
         let tick = TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()));
         unsafe { asm!("sti") };
         x86_64::instructions::interrupts::without_interrupts(|| {
-            fill_rectrange(
+            fill_rectangle(
                 &main_window.borrow_mut().inner_writer(),
                 &Vector2D {
                     x: 20 as usize,

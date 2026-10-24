@@ -1,6 +1,10 @@
 use crate::graphics::Rectangle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(
+    dead_code,
+    reason = "Move / MoveRelative / Draw は process_layer_message が処理するが、現状送信側は DrawArea のみ"
+)]
 pub enum LayerOperation {
     Move { x: i32, y: i32 },
     MoveRelative { x: i32, y: i32 },

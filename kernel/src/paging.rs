@@ -1,5 +1,3 @@
-use x86_64::structures::paging::page;
-
 use crate::{
     global::Global,
     memory_manager::{self, BYTES_PER_FRAME, FrameID, MEMORY_MANAGER},
@@ -276,7 +274,7 @@ fn setup_page_map(
 }
 
 /// 仮想アドレス `addr` から `num_4kpages` 分の4KiBページを現在のページテーブルに登録する
-pub fn setup_page_maps(addr: LinearAddress4Level, mut num_4kpages: usize) -> Result<(), ()> {
+pub fn setup_page_maps(addr: LinearAddress4Level, num_4kpages: usize) -> Result<(), ()> {
     let cr3: u64;
     unsafe {
         asm!("mov {}, cr3",out(reg) cr3);

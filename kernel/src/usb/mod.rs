@@ -27,8 +27,8 @@
 pub struct Error(i32);
 
 impl Error {
-    /// `Error::kSuccess` のコード値．
-    pub const kSuccess: i32 = 0;
+    /// `Error::SUCCESS` (本家の `Error::kSuccess`) のコード値．
+    pub const SUCCESS: i32 = 0;
 
     /// C++ 側のエラーコードから生成する．
     pub fn from_code(code: i32) -> Self {
@@ -42,7 +42,7 @@ impl Error {
 
     /// 本家の `operator bool` 相当: エラーが起きていれば true (`if (auto err = ...)` に対応)．
     pub fn is_err(&self) -> bool {
-        self.0 != Self::kSuccess
+        self.0 != Self::SUCCESS
     }
 }
 

@@ -54,14 +54,21 @@ const KEYCODE_MAP_SHIFTED: [char; 256] = {
     map
 };
 
-const CONTROL_BIT_MASK: u8 = 0b_0000_0001;
-const SHIFT_BIT_MASK: u8 = 0b_0000_0010;
-const ALT_BIT_MASK: u8 = 0b_0000_0100;
-const GUI_BIT_MASK: u8 = 0b_0000_1000;
-const RCONTROL_BIT_MASK: u8 = 0b_0001_0000;
-const RSHIFT_BIT_MASK: u8 = 0b_0010_0000;
-const RALT_BIT_MASK: u8 = 0b_0100_0000;
-const RGUI_BIT_MASK: u8 = 0b_1000_0000;
+/// USB HID の修飾キーのビット (`modifier` 引数)。
+mod modifier {
+    #![allow(
+        dead_code,
+        reason = "HID 仕様で決まるビット表。現在使うのは SHIFT / RSHIFT のみ"
+    )]
+    pub const CONTROL: u8 = 0b_0000_0001;
+    pub const SHIFT: u8 = 0b_0000_0010;
+    pub const ALT: u8 = 0b_0000_0100;
+    pub const GUI: u8 = 0b_0000_1000;
+    pub const RCONTROL: u8 = 0b_0001_0000;
+    pub const RSHIFT: u8 = 0b_0010_0000;
+    pub const RALT: u8 = 0b_0100_0000;
+    pub const RGUI: u8 = 0b_1000_0000;
+}
 
 extern "C" fn keyboard_observer(modifier: u8, keycode: u8, press: bool) {
     if !press {
@@ -70,7 +77,7 @@ extern "C" fn keyboard_observer(modifier: u8, keycode: u8, press: bool) {
     let msg = Message::KeyPush {
         keycode,
         modifier,
-        ascii: if modifier & (SHIFT_BIT_MASK | RSHIFT_BIT_MASK) != 0 {
+        ascii: if modifier & (modifier::SHIFT | modifier::RSHIFT) != 0 {
             KEYCODE_MAP_SHIFTED[keycode as usize]
         } else {
             KEYCODE_MAP[keycode as usize]
