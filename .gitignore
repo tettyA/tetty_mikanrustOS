@@ -16,3 +16,6 @@ tools/*
 fat_disk
 cafe.txt
 HelloWorld.data
+# アプリのビルド成果物 (build_and_runOS.sh が make で生成する)
+/apps/rpn/rpn
+/apps/onlyhlt/onlyhlt
