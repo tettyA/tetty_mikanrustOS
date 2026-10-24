@@ -5,6 +5,7 @@ mod acpi;
 mod allocator;
 mod console;
 mod elf;
+mod error;
 mod fat;
 mod font;
 mod frame_buffer;

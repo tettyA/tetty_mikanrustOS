@@ -1,11 +1,14 @@
 use alloc::{collections::VecDeque, format, rc::Rc};
-use core::cell::RefCell;
+use core::{cell::RefCell, ptr::read_unaligned};
 
 use crate::{
+    elf::{self, ET_EXEC, Elf64Ehdr, Elf64Phdr},
+    error::Error::{self, kNoEnoughMemory},
     font::{write_ascii, write_string},
     graphics::{Rectangle, Vector2D, fill_rectrange, to_color},
     layer::{LAYER_MANAGER, LayerManager},
     message::{LayerOperation, Message},
+    paging::{LinearAddress4Level, clean_page_maps, setup_page_maps},
     pci, printk, redraw_layers_id,
     task::{self, receive_message},
     window::{MARGIN_X, MARGIN_Y, TOP_LEFT_MARGIN, Window, draw_terminal},
@@ -189,6 +192,65 @@ impl Terminal {
         self.draw_cursor(true);
     }
 
+    fn get_first_load_address(ehdr: &Elf64Ehdr) -> u64 {
+        let phdr_ptr = unsafe {
+            (ehdr as *const _ as *const u8).add(ehdr.e_phoff as usize)
+                as *const crate::elf::Elf64Phdr
+        };
+        for i in 0..ehdr.e_phnum as usize {
+            let phdr = unsafe { core::ptr::read_unaligned(phdr_ptr.add(i)) };
+            if phdr.p_type != crate::elf::PT_LOAD {
+                continue;
+            }
+            return phdr.p_vaddr;
+        }
+        0
+    }
+
+    /// LOADセグメントを最終目標値にコピーする。
+    fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<(), ()> {
+        let phdr_ptr = unsafe {
+            (ehdr as *const Elf64Ehdr as *const u8).add(ehdr.e_phoff as usize) as *const Elf64Phdr
+        };
+
+        for i in 0..ehdr.e_phnum as usize {
+            let phdr = unsafe { read_unaligned(phdr_ptr.add(i)) };
+            if phdr.p_type != elf::PT_LOAD {
+                continue;
+            }
+
+            let dest_addr = LinearAddress4Level::new(phdr.p_vaddr);
+            let num_4kpages = ((phdr.p_memsz + 4095) / 4096) as usize;
+            setup_page_maps(dest_addr, num_4kpages)?;
+
+            let src = unsafe { (ehdr as *const _ as *const u8).add(phdr.p_offset as usize) };
+            let dst = phdr.p_vaddr as *mut u8;
+
+            unsafe {
+                core::ptr::copy_nonoverlapping(src, dst, phdr.p_filesz as usize);
+                core::ptr::write_bytes(
+                    dst.add(phdr.p_filesz as usize),
+                    0,
+                    (phdr.p_memsz - phdr.p_filesz) as usize,
+                );
+            }
+        }
+        Ok(())
+    }
+    /// ELFファイルの中のLOADセグメントを適切に配置する。
+    fn load_elf(ehdr: &Elf64Ehdr) -> Result<(), ()> {
+        if ehdr.e_type != ET_EXEC {
+            return Err(());
+        }
+
+        let addr_first = Self::get_first_load_address(ehdr);
+        if addr_first < 0xffff_8000_0000_0000 {
+            return Err(());
+        }
+
+        Self::copy_load_segments(ehdr)
+    }
+
     fn execute_line(&mut self) {
         let line_buf = self.line_buf;
         let linebuf_index = self.linebuf_index;
@@ -361,8 +423,12 @@ impl Terminal {
         }
 
         // ELFヘッダの読み込み
-        let ehdr =
-            unsafe { core::ptr::read_unaligned(file_buf.as_ptr() as *const crate::elf::Elf64Ehdr) };
+
+        let ehdr = unsafe { &*(file_buf.as_ptr() as *const Elf64Ehdr) };
+        if let Err(_) = Self::load_elf(&ehdr) {
+            self.print("failed to load ELF\n");
+            return;
+        }
         // コマンドライン引数の準備
         let mut args: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec::Vec::new();
 
@@ -383,7 +449,7 @@ impl Terminal {
         let argv: alloc::vec::Vec<*const u8> = args.iter().map(|arg| arg.as_ptr()).collect();
 
         // エントリポイントアドレスの計算 (--image-bse 0 でリンクされているから，バッファ先頭+e_entry)
-        let entry_addr = file_buf.as_ptr() as usize + ehdr.e_entry as usize;
+        let entry_addr = ehdr.e_entry as usize;
 
         type AppMain = extern "sysv64" fn(i32, *const *const u8) -> i32;
         let f: AppMain = unsafe { core::mem::transmute(entry_addr) };
@@ -393,6 +459,11 @@ impl Terminal {
 
         let s = alloc::format!("app exited. ret = {}\n", ret);
         self.print(&s);
+
+        let first_addr = Self::get_first_load_address(ehdr);
+        if let Err(_) = clean_page_maps(LinearAddress4Level::new(first_addr)) {
+            self.print("failed to clean page maps\n");
+        }
     }
 
     /// direction = -1 -> 進む +1 -> 戻る
