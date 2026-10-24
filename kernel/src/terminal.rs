@@ -1,14 +1,13 @@
 use alloc::{collections::VecDeque, format, rc::Rc};
-use core::{cell::RefCell, ptr::read_unaligned};
+use core::cell::RefCell;
 
 use crate::{
-    elf::{self, ET_EXEC, Elf64Ehdr, Elf64Phdr},
-    error::{KernelError, Result},
+    error::Result,
     font::{write_ascii, write_string},
     graphics::{Rectangle, Vector2D, fill_rectangle, to_color},
     layer::LAYER_MANAGER,
+    loader::{ArgVector, load_elf},
     message::{LayerOperation, Message},
-    paging::{LinearAddress4Level, clean_page_maps, setup_page_maps},
     pci,
     task::{self, receive_message},
     window::{MARGIN_X, MARGIN_Y, TOP_LEFT_MARGIN, Window, draw_terminal},
@@ -192,65 +191,6 @@ impl Terminal {
         self.draw_cursor(true);
     }
 
-    fn get_first_load_address(ehdr: &Elf64Ehdr) -> u64 {
-        let phdr_ptr = unsafe {
-            (ehdr as *const _ as *const u8).add(ehdr.e_phoff as usize)
-                as *const crate::elf::Elf64Phdr
-        };
-        for i in 0..ehdr.e_phnum as usize {
-            let phdr = unsafe { core::ptr::read_unaligned(phdr_ptr.add(i)) };
-            if phdr.p_type != crate::elf::PT_LOAD {
-                continue;
-            }
-            return phdr.p_vaddr;
-        }
-        0
-    }
-
-    /// LOADセグメントを最終目標値にコピーする。
-    fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
-        let phdr_ptr = unsafe {
-            (ehdr as *const Elf64Ehdr as *const u8).add(ehdr.e_phoff as usize) as *const Elf64Phdr
-        };
-
-        for i in 0..ehdr.e_phnum as usize {
-            let phdr = unsafe { read_unaligned(phdr_ptr.add(i)) };
-            if phdr.p_type != elf::PT_LOAD {
-                continue;
-            }
-
-            let dest_addr = LinearAddress4Level::new(phdr.p_vaddr);
-            let num_4kpages = ((phdr.p_memsz + 4095) / 4096) as usize;
-            setup_page_maps(dest_addr, num_4kpages)?;
-
-            let src = unsafe { (ehdr as *const _ as *const u8).add(phdr.p_offset as usize) };
-            let dst = phdr.p_vaddr as *mut u8;
-
-            unsafe {
-                core::ptr::copy_nonoverlapping(src, dst, phdr.p_filesz as usize);
-                core::ptr::write_bytes(
-                    dst.add(phdr.p_filesz as usize),
-                    0,
-                    (phdr.p_memsz - phdr.p_filesz) as usize,
-                );
-            }
-        }
-        Ok(())
-    }
-    /// ELFファイルの中のLOADセグメントを適切に配置する。
-    fn load_elf(ehdr: &Elf64Ehdr) -> Result<()> {
-        if ehdr.e_type != ET_EXEC {
-            return Err(KernelError::InvalidFormat);
-        }
-
-        let addr_first = Self::get_first_load_address(ehdr);
-        if addr_first < 0xffff_8000_0000_0000 {
-            return Err(KernelError::InvalidFormat);
-        }
-
-        Self::copy_load_segments(ehdr)
-    }
-
     fn execute_line(&mut self) {
         let line_buf = self.line_buf;
         let linebuf_index = self.linebuf_index;
@@ -347,26 +287,11 @@ impl Terminal {
             }
         } else if command == "cat" {
             let file_name = first_arg.unwrap_or("");
-            let file_entry = crate::fat::find_file(file_name, 0);
-
-            if let Some(entry) = file_entry {
-                let mut cluster = entry.first_cluster() as usize;
-                let mut remain_bytes = entry.file_size as usize;
-
+            if let Some(entry) = crate::fat::find_file(file_name, 0) {
+                let file_buf = crate::fat::read_file(&entry);
                 self.draw_cursor(false);
-                while cluster != 0 && cluster != crate::fat::END_OF_CLUSTER_CHAIN {
-                    let bytes_per_cluster = crate::fat::bytes_per_cluster();
-                    let p = crate::fat::get_sector_by_cluster::<u8>(cluster);
-
-                    let read_bytes = remain_bytes.min(bytes_per_cluster);
-                    let slice = unsafe { core::slice::from_raw_parts(p, read_bytes) };
-
-                    for &byte in slice {
-                        self.print_char(byte);
-                    }
-
-                    remain_bytes -= read_bytes;
-                    cluster = crate::fat::next_cluster(cluster);
+                for &byte in &file_buf {
+                    self.print_char(byte);
                 }
                 self.draw_cursor(true);
             }
@@ -392,77 +317,27 @@ impl Terminal {
         command: &str,
         first_arg: Option<&str>,
     ) -> Result<()> {
-        let mut cluster = file_entry.first_cluster() as usize;
-        let mut remain_bytes = file_entry.file_size as usize;
+        let file_buf = crate::fat::read_file(file_entry);
 
-        let mut file_buf = alloc::vec![0u8;remain_bytes];
-        let mut offset = 0;
-
-        while cluster != 0 && cluster != crate::fat::END_OF_CLUSTER_CHAIN {
-            let bytes_per_cluster = crate::fat::bytes_per_cluster();
-            let copy_bytes = remain_bytes.min(bytes_per_cluster);
-
-            let p = crate::fat::get_sector_by_cluster::<u8>(cluster);
-
-            unsafe {
-                let src = core::slice::from_raw_parts(p, copy_bytes);
-                file_buf[offset..offset + copy_bytes].copy_from_slice(src);
-            }
-
-            offset += copy_bytes;
-            remain_bytes -= copy_bytes;
-            cluster = crate::fat::next_cluster(cluster);
-        }
-        if file_buf.len() < 4 {
-            return Ok(());
-        }
-
-        // ELF形式ではない場合はフラットバイナリとして実行
-        if &file_buf[..4] != b"\x7fELF" {
-            // 先頭4バイトが \x7f E L F ではない
+        // ELF 形式ではない場合はフラットバイナリとして実行
+        if !file_buf.starts_with(b"\x7fELF") {
             let f: extern "C" fn() = unsafe { core::mem::transmute(file_buf.as_ptr()) };
-            x86_64::instructions::interrupts::enable(); // 一応確実に割り込み処理を許可する。
+            x86_64::instructions::interrupts::enable();
             f();
             return Ok(());
         }
 
-        // ELFヘッダの読み込み
-
-        let ehdr = unsafe { &*(file_buf.as_ptr() as *const Elf64Ehdr) };
-        Self::load_elf(&ehdr)?;
-        // コマンドライン引数の準備
-        let mut args: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec::Vec::new();
-
-        // argv[0] = コマンド名
-        let mut cmd_vec = alloc::vec::Vec::from(command.as_bytes());
-        cmd_vec.push(0); // ヌル終端
-        args.push(cmd_vec);
-
-        // argv[1..] = 引数 (空白区切り)
-        if let Some(arg_str) = first_arg {
-            for part in arg_str.split_ascii_whitespace() {
-                let mut part_vec = alloc::vec::Vec::from(part.as_bytes());
-                part_vec.push(0);
-                args.push(part_vec);
-            }
-        }
-
-        let argv: alloc::vec::Vec<*const u8> = args.iter().map(|arg| arg.as_ptr()).collect();
-
-        // エントリポイントアドレスの計算 (--image-bse 0 でリンクされているから，バッファ先頭+e_entry)
-        let entry_addr = ehdr.e_entry as usize;
-
-        type AppMain = extern "sysv64" fn(i32, *const *const u8) -> i32;
-        let f: AppMain = unsafe { core::mem::transmute(entry_addr) };
+        let argv = ArgVector::new(command, first_arg);
+        let app = load_elf(&file_buf)?;
 
         x86_64::instructions::interrupts::enable();
-        let ret = f(argv.len() as i32, argv.as_ptr());
+        let ret = app.call(&argv);
 
-        let s = alloc::format!("app exited. ret = {}\n", ret);
+        let s = format!("app exited. ret = {}\n", ret);
         self.print(&s);
 
-        let first_addr = Self::get_first_load_address(ehdr);
-        clean_page_maps(LinearAddress4Level::new(first_addr))
+        // app はここで drop され、LoadedApp::drop が clean_page_maps を自動実行する
+        Ok(())
     }
 
     /// direction = -1 -> 進む +1 -> 戻る

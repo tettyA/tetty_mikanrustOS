@@ -11,6 +11,7 @@ const PAGE_SIZE_1G: usize = 512 * PAGE_SIZE_2M;
 /// 64ビット仮想アドレスを4階層ページテーブルのインデックスに分解する構造体
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LinearAddress4Level(pub u64);
+#[allow(dead_code)]
 impl LinearAddress4Level {
     // 仮想アドレスの構成
     //  63           48 47     39 38     30 29     21 20     12 11            0
@@ -69,19 +70,7 @@ impl LinearAddress4Level {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PageMapEntry(pub u64);
 
-/*
-┌────────────────────────────────────────────────────────┐
-│ PageMapEntry (看板1枚・64ビット)                        │
-│                                                        │
-│ [ 物理アドレス: 0x40000 ]                               │
-│ 「次は 0x40000 にある案内所に行きなさい」                 │
-│                                                        │
-│ [ ルール（フラグ）]                                     │
-│ ・Present  = 1 （この先にはちゃんとメモリがあります）     │
-│ ・Writable = 1 （書き込みを許可します）                  │
-│ ・User     = 1 （一般アプリの立ち入りを許可します） ...   │
-└────────────────────────────────────────────────────────┘
-*/
+#[allow(dead_code)]
 impl PageMapEntry {
     pub const PRESENT: u64 = 1 << 0;
     pub const WRITABLE: u64 = 1 << 1;

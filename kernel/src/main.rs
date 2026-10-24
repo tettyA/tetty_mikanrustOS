@@ -15,6 +15,7 @@ mod graphics;
 mod interrupts;
 mod keyboard;
 mod layer;
+mod loader;
 mod memory_manager;
 mod memory_map;
 mod message;

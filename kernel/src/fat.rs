@@ -32,6 +32,7 @@ pub struct Bpb {
     pub fs_type: [u8; 8],
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum Attribute {
@@ -189,4 +190,31 @@ pub fn find_file(name: &str, mut directory_cluster: usize) -> Option<DirectoryEn
         directory_cluster = next_cluster(directory_cluster);
     }
     None
+}
+
+/// 指定されたディレクトリエントリが指すファイルの内容をすべて読み出して Vec<u8> で返す。
+///
+/// 本家 MikanOS の `fat::LoadFile` に相当する。
+pub fn read_file(entry: &DirectoryEntry) -> alloc::vec::Vec<u8> {
+    let mut remain_bytes = entry.file_size as usize;
+    let mut file_buf = alloc::vec![0u8; remain_bytes];
+    let mut offset = 0;
+    let mut cluster = entry.first_cluster() as usize;
+
+    while cluster != 0 && cluster != END_OF_CLUSTER_CHAIN && remain_bytes > 0 {
+        let bytes_per_cluster = bytes_per_cluster();
+        let copy_bytes = remain_bytes.min(bytes_per_cluster);
+        let p = get_sector_by_cluster::<u8>(cluster);
+
+        unsafe {
+            let src = core::slice::from_raw_parts(p, copy_bytes);
+            file_buf[offset..offset + copy_bytes].copy_from_slice(src);
+        }
+
+        offset += copy_bytes;
+        remain_bytes -= copy_bytes;
+        cluster = next_cluster(cluster);
+    }
+    file_buf.truncate(offset);
+    file_buf
 }
