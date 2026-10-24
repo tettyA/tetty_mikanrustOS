@@ -3,6 +3,7 @@ use core::arch::asm;
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 
 use crate::{
+    error::{KernelError, Result},
     global::Global,
     message::Message,
     segment::{KERNEL_CS, KERNEL_SS},
@@ -136,11 +137,6 @@ extern "C" fn task_idle(_task_id: u64, _data: i64, _arg3: u64, _arg4: u64) {
 /// level: 0 = lowest, MAX_LEVEL = highest
 pub const MAX_LEVEL: usize = 3;
 pub const DEFAULT_LEVEL: usize = 1;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaskError {
-    NoSuchTask,
-}
 
 /// タスクのエントリ関数。引数は rdi, rsi, rdx, rcx (System V ABI)に渡される
 pub type TaskFunc = extern "C" fn(u64, i64, u64, u64);
@@ -281,8 +277,8 @@ impl TaskManager {
     }
 
     /// 現在実行中のタスクを寝かせる場合だけ切り替え先を返す。
-    pub fn sleep(&mut self, id: u64) -> Result<Option<SwitchPair>, TaskError> {
-        let task = self.task_mut(id).ok_or(TaskError::NoSuchTask)?;
+    pub fn sleep(&mut self, id: u64) -> Result<Option<SwitchPair>> {
+        let task = self.task_mut(id).ok_or(KernelError::NoSuchTask)?;
         if !task.is_running {
             return Ok(None); // 既に寝ている。
         }
@@ -299,8 +295,8 @@ impl TaskManager {
     }
 
     /// `level` が `None` なら現在のレベルのまま。実行中のタスクに `Some` を渡すとレベルを変更する
-    pub fn wakeup(&mut self, id: u64, level: Option<usize>) -> Result<(), TaskError> {
-        let task = self.task_mut(id).ok_or(TaskError::NoSuchTask)?;
+    pub fn wakeup(&mut self, id: u64, level: Option<usize>) -> Result<()> {
+        let task = self.task_mut(id).ok_or(KernelError::NoSuchTask)?;
         if task.is_running {
             self.change_level_running(id, level);
             return Ok(());
@@ -349,9 +345,9 @@ impl TaskManager {
     }
 
     /// メッセージキューにメッセージを追加し，寝ていれば起こす。
-    fn send_message(&mut self, id: u64, msg: Message) -> Result<(), TaskError> {
+    fn send_message(&mut self, id: u64, msg: Message) -> Result<()> {
         self.task_mut(id)
-            .ok_or(TaskError::NoSuchTask)?
+            .ok_or(KernelError::NoSuchTask)?
             .msgs
             .push_back(msg);
         // 起きているタスクを呼んでも無害
@@ -377,7 +373,7 @@ pub fn switch_task() {
     }
 }
 
-pub fn sleep(id: u64) -> Result<(), TaskError> {
+pub fn sleep(id: u64) -> Result<()> {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let pair = TASK_MANAGER.with(|tm| tm.as_mut().unwrap().sleep(id))?;
         if let Some((next, current)) = pair {
@@ -388,10 +384,10 @@ pub fn sleep(id: u64) -> Result<(), TaskError> {
 }
 
 /// 割込みハンドラからも呼ぶ。TASK_MANAGER未初期化ならErrを返す
-pub fn send_message(id: u64, msg: Message) -> Result<(), TaskError> {
+pub fn send_message(id: u64, msg: Message) -> Result<()> {
     TASK_MANAGER.with(|tm| match tm {
         Some(tm) => tm.send_message(id, msg),
-        None => Err(TaskError::NoSuchTask),
+        None => Err(KernelError::NoSuchTask),
     })
 }
 

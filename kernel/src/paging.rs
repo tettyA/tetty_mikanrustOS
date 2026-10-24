@@ -1,4 +1,5 @@
 use crate::{
+    error::Result,
     global::Global,
     memory_manager::{self, BYTES_PER_FRAME, FrameID, MEMORY_MANAGER},
 };
@@ -217,7 +218,7 @@ pub fn setup_identify_page_table() {
 }
 
 /// メモリマネージャから新しいページマップ（4KiB）を確保し、ゼロクリアして返す
-fn new_page_map() -> Result<*mut PageMapEntry, ()> {
+fn new_page_map() -> Result<*mut PageMapEntry> {
     let frame = MEMORY_MANAGER.with(|mm| mm.allocate(1))?;
     let ptr = (frame.id * BYTES_PER_FRAME) as *mut PageMapEntry;
     unsafe {
@@ -227,7 +228,7 @@ fn new_page_map() -> Result<*mut PageMapEntry, ()> {
 }
 
 /// エントリを確認して，まだ次の階層がなければ新しく確保して接続する。
-fn set_new_page_map_if_not_present(entry: &mut PageMapEntry) -> Result<*mut PageMapEntry, ()> {
+fn set_new_page_map_if_not_present(entry: &mut PageMapEntry) -> Result<*mut PageMapEntry> {
     if entry.is_present() {
         return Ok(entry.pointer());
     }
@@ -243,7 +244,7 @@ fn setup_page_map(
     page_map_level: usize,
     mut addr: LinearAddress4Level,
     mut num_4kpages: usize,
-) -> Result<usize, ()> {
+) -> Result<usize> {
     while num_4kpages > 0 {
         let entry_index = addr.part(page_map_level);
         let entry = unsafe { &mut *page_map.add(entry_index) };
@@ -274,7 +275,7 @@ fn setup_page_map(
 }
 
 /// 仮想アドレス `addr` から `num_4kpages` 分の4KiBページを現在のページテーブルに登録する
-pub fn setup_page_maps(addr: LinearAddress4Level, num_4kpages: usize) -> Result<(), ()> {
+pub fn setup_page_maps(addr: LinearAddress4Level, num_4kpages: usize) -> Result<()> {
     let cr3: u64;
     unsafe {
         asm!("mov {}, cr3",out(reg) cr3);
@@ -284,7 +285,7 @@ pub fn setup_page_maps(addr: LinearAddress4Level, num_4kpages: usize) -> Result<
 }
 
 /// 指定されたページング構造内のエントリを全て削除する。
-fn clean_page_map(page_map: *mut PageMapEntry, page_map_level: usize) -> Result<(), ()> {
+fn clean_page_map(page_map: *mut PageMapEntry, page_map_level: usize) -> Result<()> {
     for i in 0..512 {
         let entry = unsafe { *page_map.add(i) };
         if !entry.is_present() {
@@ -307,7 +308,7 @@ fn clean_page_map(page_map: *mut PageMapEntry, page_map_level: usize) -> Result<
 }
 
 /// アプリ用のページング構造を破棄する。
-pub fn clean_page_maps(addr: LinearAddress4Level) -> Result<(), ()> {
+pub fn clean_page_maps(addr: LinearAddress4Level) -> Result<()> {
     let cr3: u64;
     unsafe {
         asm!("mov {}, cr3", out(reg) cr3);

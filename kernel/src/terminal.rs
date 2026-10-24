@@ -3,6 +3,7 @@ use core::{cell::RefCell, ptr::read_unaligned};
 
 use crate::{
     elf::{self, ET_EXEC, Elf64Ehdr, Elf64Phdr},
+    error::{KernelError, Result},
     font::{write_ascii, write_string},
     graphics::{Rectangle, Vector2D, fill_rectangle, to_color},
     layer::LAYER_MANAGER,
@@ -207,7 +208,7 @@ impl Terminal {
     }
 
     /// LOADセグメントを最終目標値にコピーする。
-    fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<(), ()> {
+    fn copy_load_segments(ehdr: &Elf64Ehdr) -> Result<()> {
         let phdr_ptr = unsafe {
             (ehdr as *const Elf64Ehdr as *const u8).add(ehdr.e_phoff as usize) as *const Elf64Phdr
         };
@@ -237,14 +238,14 @@ impl Terminal {
         Ok(())
     }
     /// ELFファイルの中のLOADセグメントを適切に配置する。
-    fn load_elf(ehdr: &Elf64Ehdr) -> Result<(), ()> {
+    fn load_elf(ehdr: &Elf64Ehdr) -> Result<()> {
         if ehdr.e_type != ET_EXEC {
-            return Err(());
+            return Err(KernelError::InvalidFormat);
         }
 
         let addr_first = Self::get_first_load_address(ehdr);
         if addr_first < 0xffff_8000_0000_0000 {
-            return Err(());
+            return Err(KernelError::InvalidFormat);
         }
 
         Self::copy_load_segments(ehdr)
@@ -372,7 +373,11 @@ impl Terminal {
         } else if !command.is_empty() {
             let file_entry = crate::fat::find_file(command, 0);
             if let Some(entry) = file_entry {
-                self.execute_file(&entry, command, first_arg);
+                if let Err(err) = self.execute_file(&entry, command, first_arg) {
+                    self.print("failed to exec file: ");
+                    self.print(&format!("{}", err));
+                    self.print("\n");
+                }
             } else {
                 self.print("no such command: ");
                 self.print(command);
@@ -386,7 +391,7 @@ impl Terminal {
         file_entry: &crate::fat::DirectoryEntry,
         command: &str,
         first_arg: Option<&str>,
-    ) {
+    ) -> Result<()> {
         let mut cluster = file_entry.first_cluster() as usize;
         let mut remain_bytes = file_entry.file_size as usize;
 
@@ -409,7 +414,7 @@ impl Terminal {
             cluster = crate::fat::next_cluster(cluster);
         }
         if file_buf.len() < 4 {
-            return;
+            return Ok(());
         }
 
         // ELF形式ではない場合はフラットバイナリとして実行
@@ -418,16 +423,13 @@ impl Terminal {
             let f: extern "C" fn() = unsafe { core::mem::transmute(file_buf.as_ptr()) };
             x86_64::instructions::interrupts::enable(); // 一応確実に割り込み処理を許可する。
             f();
-            return;
+            return Ok(());
         }
 
         // ELFヘッダの読み込み
 
         let ehdr = unsafe { &*(file_buf.as_ptr() as *const Elf64Ehdr) };
-        if let Err(_) = Self::load_elf(&ehdr) {
-            self.print("failed to load ELF\n");
-            return;
-        }
+        Self::load_elf(&ehdr)?;
         // コマンドライン引数の準備
         let mut args: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec::Vec::new();
 
@@ -460,9 +462,7 @@ impl Terminal {
         self.print(&s);
 
         let first_addr = Self::get_first_load_address(ehdr);
-        if let Err(_) = clean_page_maps(LinearAddress4Level::new(first_addr)) {
-            self.print("failed to clean page maps\n");
-        }
+        clean_page_maps(LinearAddress4Level::new(first_addr))
     }
 
     /// direction = -1 -> 進む +1 -> 戻る

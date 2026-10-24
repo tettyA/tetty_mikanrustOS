@@ -14,7 +14,7 @@
 #![allow(non_snake_case, dead_code)]
 
 use crate::usb;
-use crate::usb::Error;
+use crate::usb::CppError;
 /// `pci::ClassCode` : PCI デバイスのクラスコード．
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -53,8 +53,8 @@ unsafe extern "C" {
 
 /// `pci::ScanAllBus()` : バス 0 から再帰的に PCI デバイスを探索し，一覧を内部に保持する．
 /// 他の `pci::` / `usb::xhci::Initialize()` より先に 1 回呼ぶこと．
-pub fn ScanAllBus() -> Error {
-    Error::from_code(unsafe { pci_ScanAllBus() })
+pub fn ScanAllBus() -> CppError {
+    CppError::from_code(unsafe { pci_ScanAllBus() })
 }
 
 /// `pci::num_device` : `ScanAllBus()` で見つかったデバイス数．

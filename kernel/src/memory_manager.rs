@@ -1,3 +1,4 @@
+use crate::error::{KernelError, Result};
 use crate::global::Global;
 use crate::memory_map::{MemoryDescriptor, MemoryMap};
 
@@ -34,14 +35,14 @@ impl BitMapMemoryManager {
         }
     }
 
-    pub fn allocate(&mut self, num_frames: usize) -> Result<FrameID, ()> {
+    pub fn allocate(&mut self, num_frames: usize) -> Result<FrameID> {
         let mut start_frame_id = self.range_begin.id;
 
         loop {
             let mut all_free = true;
             for i in 0..num_frames {
                 if start_frame_id + i >= self.range_end.id {
-                    return Err(());
+                    return Err(KernelError::NoEnoughMemory);
                 }
                 if self.get_bit(FrameID {
                     id: start_frame_id + i,
@@ -58,7 +59,7 @@ impl BitMapMemoryManager {
             }
         }
     }
-    pub fn free(&mut self, start_frame: FrameID, num_frames: usize) -> Result<(), ()> {
+    pub fn free(&mut self, start_frame: FrameID, num_frames: usize) -> Result<()> {
         for i in 0..num_frames {
             self.set_bit(
                 FrameID {

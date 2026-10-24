@@ -22,17 +22,18 @@
 //! ```
 #![allow(non_snake_case, dead_code)]
 
-/// `Error` : 本家 `error.hpp` の `Error` クラス相当．コードのみ保持する．
+/// `CppError` : C++ 側 (本家 `error.hpp`) の `Error` が返すコードだけを保持する型．
+/// カーネル自身のエラーは [`crate::error::KernelError`] を使う．
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Error(i32);
+pub struct CppError(i32);
 
-impl Error {
-    /// `Error::SUCCESS` (本家の `Error::kSuccess`) のコード値．
+impl CppError {
+    /// `CppError::SUCCESS` (本家の `Error::kSuccess`) のコード値．
     pub const SUCCESS: i32 = 0;
 
     /// C++ 側のエラーコードから生成する．
     pub fn from_code(code: i32) -> Self {
-        Error(code)
+        CppError(code)
     }
 
     /// `Error::Cause()` : エラーコード (`Error::Code` の値)．0 が成功．
@@ -104,8 +105,8 @@ pub mod xhci {
     }
 
     /// `usb::xhci::ProcessEvent(*controller)` : イベントを高々 1 つ処理する．
-    pub fn ProcessEvent() -> Error {
-        Error::from_code(unsafe { usb_xhci_ProcessEvent() })
+    pub fn ProcessEvent() -> CppError {
+        CppError::from_code(unsafe { usb_xhci_ProcessEvent() })
     }
 
     /// `usb::xhci::controller->PrimaryEventRing()->HasFront()` :
