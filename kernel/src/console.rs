@@ -1,7 +1,7 @@
 use crate::font::{write_ascii, write_string};
+use crate::global::Global;
 use crate::graphics::{PixelColor, PixelDraw, PixelWriter, Rectangle, Vector2D};
 use crate::window::Window;
-use crate::global::Global;
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use core::fmt::{self, Arguments, Write};
