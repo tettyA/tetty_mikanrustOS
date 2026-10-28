@@ -260,6 +260,7 @@ fn kernel_main_new_stack(
     initialize_memory_manager(&memory_map);
     allocator::init_heap();
     init_idt();
+    crate::console::print_test(core::ptr::null());
     acpi::initialize(acpi_table);
 
     let frame_width: usize = frame_buffer_config.horizontal_resolution as usize;

@@ -5,6 +5,7 @@ use crate::window::Window;
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use core::fmt::{self, Arguments, Write};
+use core::slice::from_raw_parts;
 
 static CONSOLE: Global<Option<Console>> = Global::new(None);
 
@@ -30,6 +31,24 @@ macro_rules! printk {
     ($($arg:tt)*) => {
         $crate::console::printk(core::format_args!($($arg)*));
     };
+}
+
+#[inline(never)]
+#[unsafe(no_mangle)]
+pub extern "C" fn print_test(s: *const u8) {
+    if s.is_null() {
+        return;
+    }
+
+    let mut len = 0;
+    unsafe {
+        while *s.add(len) != 0 {
+            len += 1;
+        }
+        if let Ok(msg) = core::str::from_utf8(from_raw_parts(s, len)) {
+            crate::printk!("{}", msg);
+        }
+    }
 }
 
 pub enum ConsoleWriter {
