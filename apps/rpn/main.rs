@@ -37,11 +37,6 @@ impl Stack {
 /// C言語の呼び出し規約（extern "C"）で公開し、カーネルから呼ばれる
 #[no_mangle]
 pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> i32 {
-    let print_test_addr = 0x0000000000215600 as usize;
-    type PrintFn = extern "C" fn(*const u8);
-    let print_test: PrintFn = core::mem::transmute(print_test_addr);
-    print_test(b"Hello from rpn yeah!\n\0".as_ptr());
-
     let mut stack = Stack::new();
     let mut i = 1;
 
@@ -69,8 +64,8 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> i32 {
     if stack.ptr < 0 {
         return 0;
     }
-
-    stack.pop() as i32
+    loop {}
+    //  stack.pop() as i32
 }
 
 /// 文字列を整数に変換

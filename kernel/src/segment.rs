@@ -3,10 +3,16 @@ use x86_64::{
     registers::segmentation::{CS, DS, ES, FS, GS, SS, Segment},
     structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector},
 };
-
+/*
+  15               3  2  1   0
+  +----------------+-----+---+
+  |     Index      | TI  |RPL|
+  +----------------+-----+---+
+*/
 pub const KERNEL_CS: u64 = 1 << 3;
 pub const KERNEL_SS: u64 = 2 << 3;
-
+pub const USER_CS: u64 = (3 << 3) | 3;
+pub const USER_SS: u64 = (4 << 3) | 3;
 static GDT: Global<GlobalDescriptorTable> = Global::new(GlobalDescriptorTable::new());
 
 pub fn init_segment() {
@@ -15,7 +21,8 @@ pub fn init_segment() {
 
         let code_selector = gdt.append(Descriptor::kernel_code_segment());
         let data_selector = gdt.append(Descriptor::kernel_data_segment());
-
+        let user_code_selector = gdt.append(Descriptor::user_code_segment());
+        let user_data_selector = gdt.append(Descriptor::user_data_segment());
         // 0b00000000000000 + 00(PrivileeLevel::Ring0) = 0x0000 = nulldesc.
         let null_selector = SegmentSelector::new(0, x86_64::PrivilegeLevel::Ring0);
         gdt.load();

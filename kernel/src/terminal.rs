@@ -327,16 +327,13 @@ impl Terminal {
             return Ok(());
         }
 
-        let argv = ArgVector::new(command, first_arg);
         let app = load_elf(&file_buf)?;
+        let argv = ArgVector::new(command, first_arg);
 
         x86_64::instructions::interrupts::enable();
-        let ret = app.call(&argv);
+        app.call(&argv);
 
-        let s = format!("app exited. ret = {}\n", ret);
-        self.print(&s);
-
-        // app はここで drop され、LoadedApp::drop が clean_page_maps を自動実行する
+        #[allow(unreachable_code)]
         Ok(())
     }
 
