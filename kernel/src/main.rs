@@ -44,6 +44,7 @@ use crate::memory_map::MemoryMap;
 use crate::message::Message;
 use crate::mousecursor::{MOUSE_CURSOR, MOUSE_CURSOR_HEIGHT, MOUSE_CURSOR_WIDTH};
 use crate::pci::{initialize_pci, initialize_usb};
+use crate::segment::init_tss;
 use crate::task::{TASK_MANAGER, initialize_task, receive_message, send_message, sleep};
 use crate::timer::{TIMER_FREQ, TIMER_MANAGER};
 use crate::window::{Window, draw_textbox};
@@ -259,6 +260,7 @@ fn kernel_main_new_stack(
 
     initialize_memory_manager(&memory_map);
     allocator::init_heap();
+    init_tss();
     init_idt();
     crate::console::print_test(core::ptr::null());
     acpi::initialize(acpi_table);

@@ -1,4 +1,4 @@
-use core::arch::asm;
+use core::arch::{asm, global_asm};
 
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 
@@ -84,6 +84,9 @@ SwitchContext:  # void SwitchContext(void* next_ctx, void* current_ctx);
     mov dx, gs
     mov [rsi + 0x38], rdx
     fxsave [rsi + 0xc0]
+    # fall through to RestoreContext
+.global RestoreContext
+RestoreContext:   # void RestoreContext(void* task_context);
     # iret 用のスタックフレーム
     push qword ptr [rdi + 0x28]  # SS
     push qword ptr [rdi + 0x70]  # RSP
@@ -116,8 +119,74 @@ SwitchContext:  # void SwitchContext(void* next_ctx, void* current_ctx);
     iretq
 "#
 );
+global_asm!(
+    r#"
+.global IntHandlerLAPICTimer
+IntHandlerLAPICTimer:   # void IntHandlerLAPICTimer();
+    push rbp
+    mov rbp, rsp
+
+    # スタック上にTaskContext型の構造体を構築する
+    sub rsp, 512
+    fxsave [rsp]
+    push r15
+    push r14
+    push r13
+    push r12
+    push r11
+    push r10
+    push r9
+    push r8
+    push qword ptr [rbp]         # RBP
+    push qword ptr [rbp + 0x20]  # RSP (割り込み発生時のRSP)
+    push rsi
+    push rdi
+    push rdx
+    push rcx
+    push rbx
+    push rax
+
+    mov ax, fs
+    mov bx, gs
+    mov rcx, cr3
+
+    push rbx                     # GS
+    push rax                     # FS
+    push qword ptr [rbp + 0x28]  # SS (割り込み発生時のSS)
+    push qword ptr [rbp + 0x10]  # CS (割り込み発生時のCS)
+    push rbp                     # reserved1
+    push qword ptr [rbp + 0x18]  # RFLAGS (割り込み発生時のRFLAGS)
+    push qword ptr [rbp + 0x08]  # RIP (割り込み発生時のRIP)
+    push rcx                     # CR3    
+
+    mov rdi, rsp                 # 第1引数: &TaskContext
+    call lapic_timer_on_interrupt
+    add rsp, 64   # CR3 から GS まで (8 * 8) を破棄
+    pop rax
+    pop rbx
+    pop rcx
+    pop rdx
+    pop rdi
+    pop rsi
+    add rsp, 16   # RSP, RBP (2 * 8) を破棄 (RSPはiretq、RBPはpop rbpで復帰するため)
+    pop r8
+    pop r9
+    pop r10
+    pop r11
+    pop r12
+    pop r13
+    pop r14
+    pop r15
+    fxrstor [rsp]
+    mov rsp, rbp
+    pop rbp
+    iretq
+"#
+);
 unsafe extern "C" {
     pub fn SwitchContext(next_ctx: *const TaskContext, current_ctx: *mut TaskContext);
+    pub fn RestoreContext(task_context: *const TaskContext) -> !;
+    pub fn IntHandlerLAPICTimer();
 }
 pub fn read_cr3() -> u64 {
     let value: u64;
@@ -234,9 +303,7 @@ impl TaskManager {
         tm
     }
 
-    /// 現在のタスクをrunningの末尾へと回す(寝る場合は外す)，次のタスクとの切り替え対象を返す。
-    /// SwitchContext 自体は TASK_MANAGER.with の外で呼ぶこと。
-    pub fn prepare_switch(&mut self, current_sleep: bool) -> SwitchPair {
+    pub fn rotate_current_run_queue(&mut self, current_sleep: bool) -> u64 {
         let level_queue = &mut self.running[self.current_level];
         let current_id = level_queue.pop_front().expect("no running task");
         if !current_sleep {
@@ -257,6 +324,13 @@ impl TaskManager {
                 }
             }
         }
+
+        current_id
+    }
+    /// 現在のタスクをrunningの末尾へと回す(寝る場合は外す)，次のタスクとの切り替え対象を返す。
+    /// SwitchContext 自体は TASK_MANAGER.with の外で呼ぶこと。
+    pub fn prepare_switch(&mut self, current_sleep: bool) -> SwitchPair {
+        let current_id = self.rotate_current_run_queue(current_sleep);
         let next_id = *self.running[self.current_level]
             .front()
             .expect("no runnable task (idle task missing?)");
@@ -366,10 +440,27 @@ impl TaskManager {
 
 pub static TASK_MANAGER: Global<Option<TaskManager>> = Global::new(None);
 
-pub fn switch_task() {
-    let pair = TASK_MANAGER.with(|tm| tm.as_mut().map(|tm| tm.prepare_switch(false)));
-    if let Some((next, current)) = pair {
-        unsafe { SwitchContext(next, current) };
+pub fn switch_task(current_ctx: *const TaskContext) {
+    let next_ctx = TASK_MANAGER.with(|tm| {
+        let tm = tm.as_mut()?;
+        let current_id = tm.current_task_id();
+        let current_task = tm.task_mut(current_id).unwrap();
+        // 割り込み発生時の TaskContext で現在タスクのコンテキストを更新
+        unsafe {
+            current_task.context = *current_ctx;
+        }
+        let old_id = tm.rotate_current_run_queue(false);
+        let next_id = tm.current_task_id();
+        if old_id != next_id {
+            let next_task = tm.task_mut(next_id).unwrap();
+            Some(next_task.context_ptr() as *const TaskContext)
+        } else {
+            None
+        }
+    });
+    // TASK_MANAGER.with の外 (busy フラグ解除後) で RestoreContext を呼び出す
+    if let Some(next) = next_ctx {
+        unsafe { RestoreContext(next) };
     }
 }
 
