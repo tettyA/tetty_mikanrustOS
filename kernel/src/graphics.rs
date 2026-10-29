@@ -1,5 +1,10 @@
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 
+use crate::{
+    frame_buffer_config::{FrameBufferConfig, PixelFormat},
+    global::Global,
+};
+
 pub trait PixelDraw {
     fn write(&self, x: usize, y: usize, c: &PixelColor);
     fn width(&self) -> usize;
@@ -139,5 +144,50 @@ where
         } else {
             None
         }
+    }
+}
+
+/// 例外発生時に画面へ直書きする為の設定とライター
+pub static SCREEN_CONFIG: Global<Option<FrameBufferConfig>> = Global::new(None);
+
+pub struct ScreenWriter {
+    config: FrameBufferConfig,
+}
+
+impl ScreenWriter {
+    pub fn new(config: FrameBufferConfig) -> Self {
+        Self { config }
+    }
+}
+
+impl PixelDraw for ScreenWriter {
+    fn write(&self, x: usize, y: usize, c: &PixelColor) {
+        if x >= self.config.horizontal_resolution as usize
+            || y >= self.config.vertical_resolution as usize
+        {
+            return;
+        }
+        let offset = ((y * self.config.pixels_per_scan_line as usize + x) * 4) as isize;
+        unsafe {
+            let p = self.config.frame_buffer.offset(offset);
+            match self.config.pixel_format {
+                PixelFormat::kPixelRGBResv8BitPerColor => {
+                    *p = c.r;
+                    *p.add(1) = c.g;
+                    *p.add(2) = c.b;
+                }
+                PixelFormat::kPixelBGRResv8BitPerColor => {
+                    *p = c.b;
+                    *p.add(1) = c.g;
+                    *p.add(2) = c.r;
+                }
+            }
+        }
+    }
+    fn width(&self) -> usize {
+        self.config.horizontal_resolution as usize
+    }
+    fn height(&self) -> usize {
+        self.config.vertical_resolution as usize
     }
 }

@@ -255,6 +255,7 @@ fn kernel_main_new_stack(
     acpi_table: &acpi::Rsdp,
     volume_image: *const u8,
 ) -> ! {
+    graphics::SCREEN_CONFIG.with(|sc| *sc = Some(*frame_buffer_config));
     segment::init_segment();
     paging::setup_identify_page_table();
 
