@@ -33,6 +33,24 @@ impl Stack {
     }
 }
 
+// ★ここを追加: システムコール 0x80000000 (SyscallLogString) のラッパー
+pub fn syscall_log_string(level: u64, msg: *const u8) -> i64 {
+    let ret: i64;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_0000u32,
+            in("rdi") level,
+            in("rsi") msg,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") ret,
+            clobber_abi("C"),
+        );
+    }
+    ret
+}
+
 /// アプリケーションのエントリポイント
 /// C言語の呼び出し規約（extern "C"）で公開し、カーネルから呼ばれる
 #[no_mangle]
@@ -50,13 +68,16 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> i32 {
             let b = stack.pop();
             let a = stack.pop();
             stack.push(a + b);
+            syscall_log_string(1, b"+\0".as_ptr());
         } else if b0 == b'-' && b1 == 0 {
             let b = stack.pop();
             let a = stack.pop();
             stack.push(a - b);
+            syscall_log_string(1, b"-\0".as_ptr());
         } else {
             let a = atol(arg);
             stack.push(a);
+            syscall_log_string(1, b"#\0".as_ptr());
         }
         i += 1;
     }
@@ -64,6 +85,7 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> i32 {
     if stack.ptr < 0 {
         return 0;
     }
+    syscall_log_string(1, b"\nhello, this is rpn\n\0".as_ptr());
     loop {}
     //  stack.pop() as i32
 }

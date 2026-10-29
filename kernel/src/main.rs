@@ -23,6 +23,7 @@ mod mousecursor;
 mod paging;
 mod pci;
 mod segment;
+mod syscall;
 mod task;
 mod terminal;
 mod timer;
@@ -427,8 +428,8 @@ fn kernel_main_new_stack(
     });
     let mut textbox_cursor_visible = false;
 
+    syscall::init_syscall();
     // TaskB初期化
-
     initialize_task();
 
     x86_64::instructions::interrupts::enable();
