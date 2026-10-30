@@ -14,7 +14,7 @@ pub enum InterruptVector {
     XHCI = 0x40,
     LAPICTimer = 0x41,
 }
-
+pub const IST_FOR_TIMER: usize = 0;
 // 割り込み記述子表
 static IDT: Global<InterruptDescriptorTable> = Global::new(InterruptDescriptorTable::new());
 
@@ -171,9 +171,11 @@ pub fn init_idt() {
         idt[InterruptVector::XHCI as u8].set_handler_fn(interrupt_handler_xhchi_mouse_cursor);
 
         unsafe {
-            idt[InterruptVector::LAPICTimer as u8].set_handler_addr(VirtAddr::new(
-                crate::task::IntHandlerLAPICTimer as *const () as usize as u64,
-            ));
+            idt[InterruptVector::LAPICTimer as u8]
+                .set_handler_addr(VirtAddr::new(
+                    crate::task::IntHandlerLAPICTimer as *const () as usize as u64,
+                ))
+                .set_stack_index(IST_FOR_TIMER as u16);
         }
 
         idt.divide_error.set_handler_fn(int_handler_de);
