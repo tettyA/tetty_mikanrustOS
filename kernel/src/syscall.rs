@@ -177,10 +177,71 @@ pub extern "C" fn sys_open_window(
         error: 0,
     }
 }
+/// システムコール 0x80000004: ウィンドウに文字列を描画 (WinWriteString)
+pub extern "C" fn sys_win_write_stirng(
+    layer_id: u64,
+    x: u64,
+    y: u64,
+    color: u64,
+    s_ptr: u64,
+    _arg6: u64,
+) -> SyscallResult {
+    let layer_id = layer_id as u32;
+
+    let s = if s_ptr != 0 {
+        let mut len = 0;
+        unsafe {
+            let p = s_ptr as *const u8;
+            while *p.add(len) != 0 && len < 1024 {
+                len += 1;
+            }
+            core::str::from_utf8(core::slice::from_raw_parts(p, len)).unwrap_or("")
+        }
+    } else {
+        ""
+    };
+
+    let color = crate::graphics::to_color(color as u32);
+
+    let res = crate::layer::LAYER_MANAGER.with(|lm| {
+        let Some(lm) = lm.as_mut() else {
+            return Err(errno::EBADF);
+        };
+        let Some(layer) = lm.find_layer(layer_id) else {
+            return Err(errno::EBADF);
+        };
+        let Some(window) = layer.window() else {
+            return Err(errno::EBADF);
+        };
+
+        crate::font::write_string(
+            &window.borrow_mut().writer(),
+            x as usize,
+            y as usize,
+            s,
+            &color,
+        );
+        lm.draw_id(layer_id);
+        Ok(())
+    });
+
+    match res {
+        Ok(()) => SyscallResult { value: 0, error: 0 },
+        Err(err) => SyscallResult {
+            value: 0,
+            error: err,
+        },
+    }
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 4] =
-    [sys_log_string, sys_put_string, sys_exit, sys_open_window];
+pub static SYSCALL_TABLE: [SyscallFn; 5] = [
+    sys_log_string,
+    sys_put_string,
+    sys_exit,
+    sys_open_window,
+    sys_win_write_stirng,
+];
 
 global_asm!(
     r#"

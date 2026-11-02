@@ -47,6 +47,9 @@ impl Layer {
         self.pos += pos_diff;
         self
     }
+    pub fn window(&self) -> Option<Rc<RefCell<Window>>> {
+        self.window.clone()
+    }
 }
 
 /// カーネル全体で共有するレイヤーマネージャ。`init` 前は `None`。
@@ -328,7 +331,7 @@ impl LayerManager {
         None
     }
 
-    fn find_layer(&mut self, id: u32) -> Option<&mut Layer> {
+    pub fn find_layer(&mut self, id: u32) -> Option<&mut Layer> {
         self.layers
             .iter_mut()
             .find(|l| l.id == id)
