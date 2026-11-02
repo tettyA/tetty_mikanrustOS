@@ -33,66 +33,7 @@ impl Stack {
     }
 }
 
-#[repr(C)]
-pub struct SyscallResult {
-    pub value: u64,
-    pub error: i32,
-}
-pub fn syscall_put_string(fd: u64, buf: *const u8, len: usize) -> SyscallResult {
-    let mut value: u64;
-    let mut error: i32;
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            in("eax") 0x8000_0001u32,
-            in("rdi") fd,
-            in("rsi") buf,
-            in("rdx") len as u64,
-            out("rcx") _,
-            out("r11") _,
-            lateout("rax") value,
-            lateout("rdx") error,
-            clobber_abi("C"),
-        );
-    }
-    SyscallResult { value, error }
-}
-pub fn syscall_exit(exit_code: i32) -> ! {
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            in("eax") 0x8000_0002u32,
-            in("rdi") exit_code as u64,
-            options(noreturn),
-        );
-    }
-}
-fn print(s: &str) {
-    syscall_put_string(1, s.as_ptr(), s.len());
-}
-fn print_i64(mut val: i64) {
-    if val == 0 {
-        print("0");
-        return;
-    }
-    let mut buf = [0u8; 32];
-    let mut i = buf.len();
-    let neg = val < 0;
-    if neg {
-        val = -val;
-    }
-    while val > 0 {
-        i -= 1;
-        buf[i] = b'0' + (val % 10) as u8;
-        val /= 10;
-    }
-    if neg {
-        i -= 1;
-        buf[i] = b'-';
-    }
-    let s = unsafe { core::str::from_utf8_unchecked(&buf[i..]) };
-    print(s);
-}
+use syscall::{print, print_i64, sys_exit};
 /// アプリケーションのエントリポイント
 /// C言語の呼び出し規約（extern "C"）で公開し、カーネルから呼ばれる
 #[no_mangle]
@@ -126,7 +67,7 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> i32 {
     }
     print_i64(result);
     print("\n");
-    syscall_exit(result as i32);
+    sys_exit(result as i32);
     //  stack.pop() as i32
 }
 

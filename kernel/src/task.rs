@@ -446,7 +446,7 @@ pub fn current_task_id() -> u64 {
     TASK_MANAGER.with(|tm| tm.as_ref().unwrap().current_task_id())
 }
 // 現在タスクのos_stack_ptrのポインタを取得(CallAPpでRSPを保存するため)
-pub fn curretn_task_os_stack_ptr_ptr() -> *mut u64 {
+pub fn current_task_os_stack_ptr_ptr() -> *mut u64 {
     TASK_MANAGER.with(|tm| {
         let tm = tm.as_mut().unwrap();
         let current_id = tm.current_task_id();

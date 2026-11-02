@@ -2,6 +2,7 @@
 resolver="3"
 members = [
     "kernel",
-    "apps/rpn"
+    "apps/rpn",
+    "apps/syscall",
 ]
 

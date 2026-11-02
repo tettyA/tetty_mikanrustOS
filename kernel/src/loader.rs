@@ -3,16 +3,12 @@
 //! 本家 MikanOS の `terminal.cpp` にある `LoadELF` / `CopyLoadSegments` / `MakeArgVector` に相当する。
 //! 本家は `CleanPageMaps` を実行後に手で呼ぶが、ここでは [`LoadedApp`] の `Drop` で必ず行う。
 //! そのため、途中で読み込みに失敗した場合も、確保済みのページマップが解放される。
-use core::arch::asm;
-
-use alloc::vec::Vec;
-
 use crate::{
     elf::{self, ET_EXEC, Elf64Ehdr, Elf64Phdr},
     error::{KernelError, Result},
     paging::{LinearAddress4Level, clean_page_maps, setup_page_maps},
     printk,
-    segment::{USER_CS, USER_SS},
+    segment::USER_SS,
 };
 
 /// アプリをロードしてよい仮想アドレスの下限 (アドレス空間の上位半分)。
@@ -51,13 +47,13 @@ impl LoadedApp {
     pub fn call(&self, argv: &ArgVector) -> i32 {
         let stack_top = APP_STACK_PAGE_ADDR + APP_STACK_SIZE - 8;
 
-        let os_stack_ptr = crate::task::curretn_task_os_stack_ptr_ptr();
+        let os_stack_ptr = crate::task::current_task_os_stack_ptr_ptr();
 
         unsafe {
             crate::syscall::CallApp(
                 argv.argc,
                 argv.argv,
-                crate::segment::USER_SS as u16,
+                USER_SS as u16,
                 self.entry,
                 stack_top,
                 os_stack_ptr,

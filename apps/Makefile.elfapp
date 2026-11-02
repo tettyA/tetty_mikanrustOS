@@ -1,0 +1,25 @@
+SYSCALL_DIR = $(dir $(lastword $(MAKEFILE_LIST)))syscall
+SYSCALL_LIB = $(SYSCALL_DIR)/libsyscall.rlib
+
+RUSTFLAGS = --edition 2021 \
+            --target x86_64-unknown-none \
+            -C relocation-model=static \
+            -C link-arg=--entry=main \
+            -C link-arg=-z \
+            -C link-arg=norelro \
+            -C code-model=large \
+            -C link-arg=--image-base=0xffff800000000000 \
+            -C link-arg=--static \
+            -C link-arg=--nmagic \
+            -O \
+            --extern syscall=$(SYSCALL_LIB)
+
+.PHONY: all
+all: $(TARGET)
+
+$(SYSCALL_LIB): $(SYSCALL_DIR)/src/lib.rs
+	rustc --edition 2021 --crate-type rlib --target x86_64-unknown-none -O $< -o $@
+
+$(TARGET): main.rs Makefile $(SYSCALL_LIB)
+	rustc $(RUSTFLAGS) main.rs -o $@
+
