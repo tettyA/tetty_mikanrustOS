@@ -123,9 +123,64 @@ pub extern "C" fn sys_exit(
         error: exit_code as i32, // RDX に終了コードが入る
     }
 }
+/// システムコール 0x80000003 ウィンドウを開く
+pub extern "C" fn sys_open_window(
+    w: u64,
+    h: u64,
+    x: u64,
+    y: u64,
+    title_ptr: u64,
+    _arg6: u64,
+) -> SyscallResult {
+    use crate::graphics::Vector2D;
+    use crate::layer::LAYER_MANAGER;
+    use crate::window::Window;
+
+    let title = if title_ptr != 0 {
+        let mut len = 0;
+        unsafe {
+            let p = title_ptr as *const u8;
+            while *p.add(len) != 0 && len < 128 {
+                len += 1;
+            }
+            core::str::from_utf8(core::slice::from_raw_parts(p, len)).unwrap_or("App Window")
+        }
+    } else {
+        "App Window"
+    };
+
+    let layer_id = LAYER_MANAGER.with(|lm| {
+        let lm = lm.as_mut().unwrap();
+        let pixel_format = lm.pixel_format();
+        let window = alloc::rc::Rc::new(core::cell::RefCell::new(Window::new_toplevel(
+            w as usize,
+            h as usize,
+            pixel_format,
+            title,
+        )));
+
+        let layer_id = lm.new_layer().set_window(window).set_draggable(true).id;
+
+        lm.move_layer(
+            layer_id,
+            Vector2D {
+                x: x as i32,
+                y: y as i32,
+            },
+        );
+        lm.activate(layer_id);
+        layer_id
+    });
+
+    SyscallResult {
+        value: layer_id as u64,
+        error: 0,
+    }
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 3] = [sys_log_string, sys_put_string, sys_exit];
+pub static SYSCALL_TABLE: [SyscallFn; 4] =
+    [sys_log_string, sys_put_string, sys_exit, sys_open_window];
 
 global_asm!(
     r#"

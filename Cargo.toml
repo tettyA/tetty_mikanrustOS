@@ -4,5 +4,6 @@ members = [
     "kernel",
     "apps/rpn",
     "apps/syscall",
+    "apps/winhello",
 ]
 

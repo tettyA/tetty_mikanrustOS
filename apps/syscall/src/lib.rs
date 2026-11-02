@@ -61,6 +61,35 @@ pub fn sys_exit(exit_code: i32) -> ! {
     }
 }
 
+pub fn sys_open_window(w: usize, h: usize, x: i32, y: i32, title: &str) -> SyscallResult {
+    let mut value: u64;
+    let mut error: i32;
+
+    let mut title_buf = [0u8; 128];
+    let len = title.len().min(127);
+
+    title_buf[..len].copy_from_slice(&title.as_bytes()[..len]);
+    title_buf[len] = 0;
+
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_0003u32,
+            in("rdi") w as u64,
+            in("rsi") h as u64,
+            in("rdx") x as u64,
+            in("r10") y as u64,
+            in("r8") title_buf.as_ptr(),
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") value,
+            lateout("rdx") error,
+            clobber_abi("C"),
+        );
+    }
+
+    SyscallResult { value, error }
+}
 /// 文字列を標準出力 (fd=1) に出力するラッパー
 pub fn print(s: &str) {
     sys_put_string(1, s.as_ptr(), s.len());
@@ -90,4 +119,3 @@ pub fn print_i64(mut val: i64) {
     let s = unsafe { core::str::from_utf8_unchecked(&buf[i..]) };
     print(s);
 }
-
