@@ -108,35 +108,87 @@ pub extern "C" fn sys_put_string(
         error: errno::EBADF,
     }
 }
+/// システムコール 0x80000002 : アプリケーションを終了する
+pub extern "C" fn sys_exit(
+    exit_code: u64,
+    _arg2: u64,
+    _arg3: u64,
+    _arg4: u64,
+    _arg5: u64,
+    _arg6: u64,
+) -> SyscallResult {
+    let os_stack_ptr = crate::task::current_task_os_stack_ptr();
+    SyscallResult {
+        value: os_stack_ptr,     // RAX に OSスタックポインタが入る
+        error: exit_code as i32, // RDX に終了コードが入る
+    }
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 2] = [sys_log_string, sys_put_string];
+pub static SYSCALL_TABLE: [SyscallFn; 3] = [sys_log_string, sys_put_string, sys_exit];
 
 global_asm!(
     r#"
+.global CallApp
+CallApp:  # int CallApp(int argc, char** argv, uint16_t ss, uint64_t rip, uint64_t rsp, uint64_t* os_stack_ptr);
+    push rbx
+    push rbp
+    push r12
+    push r13
+    push r14
+    push r15
+    mov [r9], rsp  # OS 用のスタックポインタを保存 (第6引数 r9)
+    push rdx       # SS (ユーザー空間データセグメント)
+    push r8        # RSP (ユーザー空間スタックポインタ)
+    add rdx, 8     # CS は SS の次 (USER_CS = USER_SS + 8)
+    push rdx       # CS (ユーザー空間コードセグメント)
+    push rcx       # RIP (エントリポイント)
+    retfq          # ユーザーモード (Ring 3) へジャンプ
 .global SyscallEntry
 SyscallEntry:  # void SyscallEntry(void);
     push rbp
     push rcx   # ユーザー空間の元の RIP (syscall 命令が RCX に自動退避)
     push r11   # ユーザー空間の元の RFLAGS (syscall 命令が R11 に自動退避)
+    push rax   # ★【追加】システムコール番号をスタックに保存
     mov rcx, r10        # syscall ABI では第4引数は R10 に入るため、C ABI の RCX に移動
     and eax, 0x7fffffff # システムコール番号の最上位ビットをマスク (0x80000000 -> 0)
     mov rbp, rsp
     and rsp, -16        # 16バイト・スタックアライメント
     lea r11, [rip + SYSCALL_TABLE]
     call qword ptr [r11 + 8 * rax]
-    # rbx, r12-r15 は callee-saved なので呼び出し先で保護される
-    # rax は戻り値なので上書きしない
+    # rax には value, rdx には error が格納されている
     mov rsp, rbp
+    pop rsi             # 保存していたシステムコール番号を復帰
+    cmp esi, 0x80000002 # Exit システムコール (0x80000002) か？
+    je .Lexit           # Exit なら .Lexit へジャンプ
     pop r11    # 元の RFLAGS を復帰
     pop rcx    # 元の RIP を復帰
     pop rbp    # 元の RBP を復帰
     sysretq    # ユーザーモードへ復帰 (RIP <- RCX, RFLAGS <- R11)
+.Lexit:
+    # アプリ終了時のスタック復帰処理
+    mov rsp, rax # rax は task.os_stack_ptr (CallApp 実行直前の OS スタックに復帰)
+    mov eax, edx # edx は exit_code (第1戻り値として EAX に設定)
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    pop rbx
+    ret          # CallApp の呼び出し元 (Terminal::ExecuteFile) へリターン
 "#
 );
 
 unsafe extern "C" {
     pub fn SyscallEntry();
+    pub fn CallApp(
+        argc: i32,
+        argv: *const *const u8,
+        ss: u16,
+        rip: u64,
+        rsp: u64,
+        os_stack_ptr: *mut u64,
+    ) -> i32;
 }
 /// MSR を設定して syscall / sysret 命令を有効化する (本家 InitializeSyscall 相当)
 pub fn init_syscall() {

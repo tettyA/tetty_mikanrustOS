@@ -362,9 +362,8 @@ impl Terminal {
         let argv = ArgVector::new(command, first_arg);
 
         x86_64::instructions::interrupts::enable();
-        app.call(&argv);
-
-        #[allow(unreachable_code)]
+        let ret = app.call(&argv);
+        self.print(&format!("app exiter. ret = {}\n", ret));
         Ok(())
     }
 

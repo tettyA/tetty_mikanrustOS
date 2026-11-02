@@ -57,6 +57,16 @@ pub fn syscall_put_string(fd: u64, buf: *const u8, len: usize) -> SyscallResult 
     }
     SyscallResult { value, error }
 }
+pub fn syscall_exit(exit_code: i32) -> ! {
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_0002u32,
+            in("rdi") exit_code as u64,
+            options(noreturn),
+        );
+    }
+}
 fn print(s: &str) {
     syscall_put_string(1, s.as_ptr(), s.len());
 }
@@ -116,7 +126,7 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> i32 {
     }
     print_i64(result);
     print("\n");
-    loop {}
+    syscall_exit(result as i32);
     //  stack.pop() as i32
 }
 

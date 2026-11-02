@@ -219,6 +219,7 @@ pub struct Task {
     id: u64,
     stack: Vec<u64>,
     context: TaskContext,
+    pub os_stack_ptr: u64, // CallApp 呼び出し時の OS スタックポインタ退避用
     msgs: VecDeque<Message>,
     level: usize,
     is_running: bool,
@@ -230,6 +231,7 @@ impl Task {
             id,
             stack: Vec::new(),
             context: unsafe { core::mem::zeroed() },
+            os_stack_ptr: 0,
             msgs: VecDeque::new(),
             level: DEFAULT_LEVEL,
             is_running: false,
@@ -442,6 +444,23 @@ pub static TASK_MANAGER: Global<Option<TaskManager>> = Global::new(None);
 
 pub fn current_task_id() -> u64 {
     TASK_MANAGER.with(|tm| tm.as_ref().unwrap().current_task_id())
+}
+// 現在タスクのos_stack_ptrのポインタを取得(CallAPpでRSPを保存するため)
+pub fn curretn_task_os_stack_ptr_ptr() -> *mut u64 {
+    TASK_MANAGER.with(|tm| {
+        let tm = tm.as_mut().unwrap();
+        let current_id = tm.current_task_id();
+        let task = tm.task_mut(current_id).unwrap();
+        &mut task.os_stack_ptr as *mut u64
+    })
+}
+// 現在タスクの os_stack_ptr の値を取得（sys_exit で復帰先 RSP を得るため）
+pub fn current_task_os_stack_ptr() -> u64 {
+    TASK_MANAGER.with(|tm| {
+        let tm = tm.as_mut().unwrap();
+        let current_id = tm.current_task_id();
+        tm.task_mut(current_id).unwrap().os_stack_ptr
+    })
 }
 pub fn switch_task(current_ctx: *const TaskContext) {
     let next_ctx = TASK_MANAGER.with(|tm| {

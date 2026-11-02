@@ -45,38 +45,24 @@ impl Drop for LoadedApp {
         }
     }
 }
-/// アプリケーションを特権レベル 3 (Ring 3) で起動する。
-///
-/// x86-64 では特権レベルを下げる専用の jump 命令は存在しないため、
-/// 64ビット Far Return (`retfq`) を使用して CPL を Ring 3 に遷移させる。
-///
-/// スタックには [SS, RSP, CS, RIP] の順に積み、retfq が [RIP, CS, RSP, SS] を復帰する。
-pub fn call_app(argc: i32, argv: *const *const u8, cs: u64, ss: u64, rip: u64, rsp: u64) -> ! {
-    unsafe {
-        asm!(
-            "push {ss}",
-            "push {rsp}",
-            "push {cs}",
-            "push {rip}",
-            "retfq",
-            ss=in(reg) ss,
-            rsp=in(reg) rsp,
-            cs=in(reg) cs,
-            rip=in(reg) rip,
-            in("rdi") argc,
-            in("rsi")argv,
-            options(noreturn)
-        );
-    }
-}
+
 impl LoadedApp {
     /// エントリポイントを `main(argc, argv)` として呼び、その戻り値を返す。
-    pub fn call(&self, argv: &ArgVector) -> ! {
+    pub fn call(&self, argv: &ArgVector) -> i32 {
         let stack_top = APP_STACK_PAGE_ADDR + APP_STACK_SIZE - 8;
 
-        call_app(
-            argv.argc, argv.argv, USER_CS, USER_SS, self.entry, stack_top,
-        );
+        let os_stack_ptr = crate::task::curretn_task_os_stack_ptr_ptr();
+
+        unsafe {
+            crate::syscall::CallApp(
+                argv.argc,
+                argv.argv,
+                crate::segment::USER_SS as u16,
+                self.entry,
+                stack_top,
+                os_stack_ptr,
+            )
+        }
     }
 }
 
