@@ -440,6 +440,9 @@ impl TaskManager {
 
 pub static TASK_MANAGER: Global<Option<TaskManager>> = Global::new(None);
 
+pub fn current_task_id() -> u64 {
+    TASK_MANAGER.with(|tm| tm.as_ref().unwrap().current_task_id())
+}
 pub fn switch_task(current_ctx: *const TaskContext) {
     let next_ctx = TASK_MANAGER.with(|tm| {
         let tm = tm.as_mut()?;

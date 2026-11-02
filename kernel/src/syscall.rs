@@ -15,42 +15,102 @@ fn wrmsr(msr: u32, value: u64) {
     options(nomem, nostack, preserves_flags))
     };
 }
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SyscallResult {
+    pub value: u64,
+    pub error: i32,
+}
 
-// システムコール関数の型定義 (最大6引数、戻り値 i64)
-pub type SyscallFn = extern "C" fn(u64, u64, u64, u64, u64, u64) -> i64;
+pub mod errno {
+    pub const EPERM: i32 = 1;
+    pub const E2BIG: i32 = 7;
+    pub const EBADF: i32 = 9;
+}
+
+// システムコール関数の型定義 (最大6引数、戻り値 SyscallResult)
+pub type SyscallFn = extern "C" fn(u64, u64, u64, u64, u64, u64) -> SyscallResult;
 
 /// システムコール 0x80000000: 文字列をコンソールに出力する
 pub extern "C" fn sys_log_string(
-    _level: u64,
+    level: u64,
     message_ptr: u64,
     _arg3: u64,
     _arg4: u64,
     _arg5: u64,
     _arg6: u64,
-) -> i64 {
+) -> SyscallResult {
+    if level > 3 {
+        return SyscallResult {
+            value: 0,
+            error: errno::EPERM,
+        };
+    }
     let s_ptr = message_ptr as *const u8;
     if s_ptr.is_null() {
-        return -1;
+        return SyscallResult {
+            value: 0,
+            error: errno::EPERM,
+        };
     }
     let mut len = 0;
     unsafe {
-        // 最大1024バイトまでNUL終端を探索
         while *s_ptr.add(len) != 0 {
             len += 1;
             if len > 1024 {
-                return -1;
+                return SyscallResult {
+                    value: 0,
+                    error: errno::E2BIG,
+                };
             }
         }
         if let Ok(s) = core::str::from_utf8(core::slice::from_raw_parts(s_ptr, len)) {
             crate::printk!("{}", s);
         }
     }
-    0
+    SyscallResult {
+        value: len as u64,
+        error: 0,
+    }
 }
-
+/// システムコール 0x80000001: ターミナルに文字列を出力する (PutString)
+pub extern "C" fn sys_put_string(
+    fd: u64,
+    buf_ptr: u64,
+    len: u64,
+    _arg4: u64,
+    _arg5: u64,
+    _arg6: u64,
+) -> SyscallResult {
+    if len > 1024 {
+        return SyscallResult {
+            value: 0,
+            error: errno::E2BIG,
+        };
+    }
+    if fd == 1 {
+        let task_id = crate::task::current_task_id();
+        let slice = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, len as usize) };
+        crate::terminal::TERMINALS.with(|map| {
+            if let Some(&term_ptr) = map.get(&task_id) {
+                unsafe {
+                    (*term_ptr).print_bytes(slice);
+                }
+            }
+        });
+        return SyscallResult {
+            value: len,
+            error: 0,
+        };
+    }
+    SyscallResult {
+        value: 0,
+        error: errno::EBADF,
+    }
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 1] = [sys_log_string];
+pub static SYSCALL_TABLE: [SyscallFn; 2] = [sys_log_string, sys_put_string];
 
 global_asm!(
     r#"

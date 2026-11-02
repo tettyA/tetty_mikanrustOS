@@ -1,9 +1,14 @@
-use alloc::{collections::VecDeque, format, rc::Rc};
+use alloc::{
+    collections::{BTreeMap, VecDeque},
+    format,
+    rc::Rc,
+};
 use core::cell::RefCell;
 
 use crate::{
     error::Result,
     font::{write_ascii, write_string},
+    global::Global,
     graphics::{Rectangle, Vector2D, fill_rectangle, to_color},
     layer::LAYER_MANAGER,
     loader::{ArgVector, load_elf},
@@ -12,8 +17,9 @@ use crate::{
     task::{self, receive_message},
     window::{MARGIN_X, MARGIN_Y, TOP_LEFT_MARGIN, Window, draw_terminal},
 };
-
+pub static TERMINALS: Global<BTreeMap<u64, *mut Terminal>> = Global::new(BTreeMap::new());
 pub struct Terminal {
+    task_id: u64,
     window: Rc<RefCell<Window>>,
     layer_id: u32,
     cursor: Vector2D<usize>,
@@ -29,7 +35,7 @@ impl Terminal {
     pub const COLUMNS: usize = 60;
     pub const LINE_MAX: usize = 128;
 
-    pub fn new() -> Self {
+    pub fn new(task_id: u64) -> Self {
         let (layer_id, window) = LAYER_MANAGER.with(|lm| {
             let lm = lm.as_mut().unwrap();
             let pixel_format = lm.pixel_format();
@@ -62,6 +68,7 @@ impl Terminal {
         cmd_history.resize(8, [0; Self::LINE_MAX]);
 
         let mut term = Self {
+            task_id,
             window,
             layer_id,
             cursor: Vector2D { x: 0, y: 0 },
@@ -182,15 +189,39 @@ impl Terminal {
     }
 
     pub fn print(&mut self, s: &str) {
-        self.draw_cursor(false);
-
-        for &c in s.as_bytes() {
-            self.print_char(c);
-        }
-
-        self.draw_cursor(true);
+        self.print_bytes(s.as_bytes());
     }
 
+    pub fn print_bytes(&mut self, bytes: &[u8]) {
+        let cursor_before = self.calc_cursor_pos();
+        self.draw_cursor(false);
+        for &c in bytes {
+            self.print_char(c);
+        }
+        self.draw_cursor(true);
+        let cursor_after = self.calc_cursor_pos();
+        let draw_pos = Vector2D {
+            x: TOP_LEFT_MARGIN.x as i32,
+            y: cursor_before.y as i32,
+        };
+        let inner_size = self.window.borrow().inner_size();
+        let draw_size = Vector2D {
+            x: inner_size.x as i32,
+            y: (cursor_after.y as i32 - cursor_before.y as i32) + 16,
+        };
+        let area = Rectangle {
+            pos_lu: draw_pos,
+            size: draw_size,
+        };
+        let _ = task::send_message(
+            1,
+            Message::Layer {
+                op: LayerOperation::DrawArea { area },
+                layer_id: self.layer_id,
+                src_task: self.task_id,
+            },
+        );
+    }
     fn execute_line(&mut self) {
         let line_buf = self.line_buf;
         let linebuf_index = self.linebuf_index;
@@ -467,9 +498,10 @@ impl Terminal {
 }
 
 pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64) {
-    let mut terminal = Terminal::new();
+    let mut terminal = Terminal::new(task_id);
     let layer_id = terminal.layer_id();
 
+    TERMINALS.with(|map| map.insert(task_id, &mut terminal as *mut Terminal));
     LAYER_MANAGER.with(|lm| {
         let Some(lm) = lm.as_mut() else { return };
         lm.move_layer(layer_id, Vector2D { x: 100, y: 200 });
