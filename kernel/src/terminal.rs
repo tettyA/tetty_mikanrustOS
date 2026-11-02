@@ -363,7 +363,7 @@ impl Terminal {
 
         x86_64::instructions::interrupts::enable();
         let ret = app.call(&argv);
-        self.print(&format!("app exiter. ret = {}\n", ret));
+        self.print(&format!("app exist. ret = {}\n", ret));
         Ok(())
     }
 
