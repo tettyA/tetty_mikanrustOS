@@ -95,7 +95,7 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> ! {
         // 2x2 の黄色い星 (0xfff100) を描画
         sys_win_fill_rectangle(layer_id | LAYER_NO_REDRAW, 4 + x, 24 + y, 2, 2, 0xfff100);
     }
-
+    //
     sys_win_redraw(layer_id);
     let tick_end = sys_get_current_tick().value;
     let elapsed_ms = (tick_end - tick_start) * 1000 / timer_freq;
