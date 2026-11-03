@@ -77,7 +77,7 @@ pub fn sys_put_string(fd: u64, buf: *const u8, len: usize) -> SyscallResult {
 }
 
 /// システムコール 0x80000002: アプリケーション終了 (Exit)
-pub fn sys_exit(exit_code: i32) -> ! {
+fn sys_exit(exit_code: i32) -> ! {
     unsafe {
         core::arch::asm!(
             "syscall",
@@ -88,6 +88,10 @@ pub fn sys_exit(exit_code: i32) -> ! {
     }
 }
 
+/// 終了コードを指定してプロセスを終了する。
+pub fn exit(exit_code: i32) -> ! {
+    sys_exit(exit_code);
+}
 pub fn sys_open_window(w: usize, h: usize, x: i32, y: i32, title: &str) -> SyscallResult {
     let mut value: u64;
     let mut error: i32;

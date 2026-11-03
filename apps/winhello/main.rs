@@ -2,7 +2,7 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use syscall::{sys_exit, sys_open_window, sys_win_write_string};
+use syscall::{exit, sys_open_window, sys_win_write_string};
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
@@ -14,7 +14,7 @@ pub unsafe extern "C" fn main(_argc: i32, _argv: *const *const u8) -> ! {
     // 幅 200, 高さ 100, 座標 (10, 10) に "winhello" というタイトルのウィンドウを開く
     let res = sys_open_window(200, 100, 10, 10, "winhello");
     if res.error != 0 {
-        sys_exit(res.error);
+        exit(res.error);
     }
     let layer_id = res.value as u32;
 
@@ -25,5 +25,5 @@ pub unsafe extern "C" fn main(_argc: i32, _argv: *const *const u8) -> ! {
     // 青色 (0x0000c0)
     sys_win_write_string(layer_id, 40, 56, 0x0000c0, "hello world!");
 
-    sys_exit(0);
+    exit(0);
 }

@@ -33,7 +33,7 @@ impl Stack {
     }
 }
 
-use syscall::{print, print_i64, sys_exit};
+use syscall::{exit, print, print_i64};
 /// アプリケーションのエントリポイント
 /// C言語の呼び出し規約（extern "C"）で公開し、カーネルから呼ばれる
 #[no_mangle]
@@ -67,8 +67,7 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> i32 {
     }
     print_i64(result);
     print("\n");
-    sys_exit(result as i32);
-    //  stack.pop() as i32
+    exit(result as i32);
 }
 
 /// 文字列を整数に変換
