@@ -7,34 +7,7 @@ pub struct SyscallResult {
     pub value: u64,
     pub error: i32,
 }
-/// システムコール 0x80000004: ウィンドウに文字列を描画 (WinWriteString)
-// ★【追加】新規ラッパー関数
-pub fn sys_win_write_string(layer_id: u32, x: i32, y: i32, color: u32, s: &str) -> SyscallResult {
-    let mut value: u64;
-    let mut error: i32;
-    // 文字列を NUL 終端にして渡すため一時バッファにコピー
-    let mut buf = [0u8; 1024];
-    let len = s.len().min(1023);
-    buf[..len].copy_from_slice(&s.as_bytes()[..len]);
-    buf[len] = 0;
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            in("eax") 0x8000_0004u32,
-            in("rdi") layer_id as u64,
-            in("rsi") x as u64,
-            in("rdx") y as u64,
-            in("r10") color as u64,
-            in("r8") buf.as_ptr(),
-            out("rcx") _,
-            out("r11") _,
-            lateout("rax") value,
-            lateout("rdx") error,
-            clobber_abi("C"),
-        );
-    }
-    SyscallResult { value, error }
-}
+
 /// システムコール 0x80000000: ログ文字列出力
 pub fn sys_log_string(level: u64, message: *const u8) -> SyscallResult {
     let mut value: u64;
@@ -88,10 +61,35 @@ fn sys_exit(exit_code: i32) -> ! {
     }
 }
 
-/// 終了コードを指定してプロセスを終了する。
-pub fn exit(exit_code: i32) -> ! {
-    sys_exit(exit_code);
+/// システムコール 0x80000004: ウィンドウに文字列を描画 (WinWriteString)
+// ★【追加】新規ラッパー関数
+pub fn sys_win_write_string(layer_id: u32, x: i32, y: i32, color: u32, s: &str) -> SyscallResult {
+    let mut value: u64;
+    let mut error: i32;
+    // 文字列を NUL 終端にして渡すため一時バッファにコピー
+    let mut buf = [0u8; 1024];
+    let len = s.len().min(1023);
+    buf[..len].copy_from_slice(&s.as_bytes()[..len]);
+    buf[len] = 0;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_0004u32,
+            in("rdi") layer_id as u64,
+            in("rsi") x as u64,
+            in("rdx") y as u64,
+            in("r10") color as u64,
+            in("r8") buf.as_ptr(),
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") value,
+            lateout("rdx") error,
+            clobber_abi("C"),
+        );
+    }
+    SyscallResult { value, error }
 }
+
 pub fn sys_open_window(w: usize, h: usize, x: i32, y: i32, title: &str) -> SyscallResult {
     let mut value: u64;
     let mut error: i32;
@@ -121,6 +119,7 @@ pub fn sys_open_window(w: usize, h: usize, x: i32, y: i32, title: &str) -> Sysca
 
     SyscallResult { value, error }
 }
+
 /// 文字列を標準出力 (fd=1) に出力するラッパー
 pub fn print(s: &str) {
     sys_put_string(1, s.as_ptr(), s.len());
@@ -149,4 +148,39 @@ pub fn print_i64(mut val: i64) {
     }
     let s = unsafe { core::str::from_utf8_unchecked(&buf[i..]) };
     print(s);
+}
+
+/// システムコール 0x80000005: ウィンドウに矩形を描画 (WinFillRectangle)
+pub fn sys_win_fill_rectangle(
+    layer_id: u32,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    color: u32,
+) -> SyscallResult {
+    let mut value: u64;
+    let mut error: i32;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_0005u32,
+            in("rdi") layer_id as u64,
+            in("rsi") x as u64,
+            in("rdx") y as u64,
+            in("r10") w as u64,
+            in("r8") h as u64,
+            in("r9") color as u64,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") value,
+            lateout("rdx") error,
+            clobber_abi("C"),
+        );
+    }
+    SyscallResult { value, error }
+}
+/// 終了コードを指定してプロセスを終了する。
+pub fn exit(exit_code: i32) -> ! {
+    sys_exit(exit_code);
 }

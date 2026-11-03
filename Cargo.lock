@@ -75,6 +75,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "stars"
+version = "0.1.0"
+dependencies = [
+ "syscall",
+]
+
+[[package]]
 name = "syscall"
 version = "0.1.0"
 

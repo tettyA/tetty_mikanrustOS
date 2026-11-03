@@ -1,5 +1,11 @@
 use core::arch::global_asm;
 
+use crate::{
+    graphics::{Vector2D, to_color},
+    layer::LAYER_MANAGER,
+    window::{self, Window},
+};
+
 const IA32_EFER: u32 = 0xc000_0080;
 const IA32_STAR: u32 = 0xc000_0081;
 const IA32_LSTAR: u32 = 0xc000_0082;
@@ -177,6 +183,35 @@ pub extern "C" fn sys_open_window(
         error: 0,
     }
 }
+
+fn do_win_func<F>(layer_id: u32, f: F) -> SyscallResult
+where
+    F: FnOnce(&mut Window) -> Result<(), i32>,
+{
+    let res = LAYER_MANAGER.with(|lm| {
+        let Some(lm) = lm.as_mut() else {
+            return Err(errno::EBADF);
+        };
+        let Some(layer) = lm.find_layer(layer_id) else {
+            return Err(errno::EBADF);
+        };
+        let Some(window) = layer.window() else {
+            return Err(errno::EBADF);
+        };
+
+        f(&mut window.borrow_mut())?;
+        lm.draw_id(layer_id);
+        Ok(())
+    });
+    match res {
+        Ok(()) => SyscallResult { value: 0, error: 0 },
+        Err(err) => SyscallResult {
+            value: 0,
+            error: err,
+        },
+    }
+}
+
 /// システムコール 0x80000004: ウィンドウに文字列を描画 (WinWriteString)
 pub extern "C" fn sys_win_write_stirng(
     layer_id: u64,
@@ -203,44 +238,45 @@ pub extern "C" fn sys_win_write_stirng(
 
     let color = crate::graphics::to_color(color as u32);
 
-    let res = crate::layer::LAYER_MANAGER.with(|lm| {
-        let Some(lm) = lm.as_mut() else {
-            return Err(errno::EBADF);
-        };
-        let Some(layer) = lm.find_layer(layer_id) else {
-            return Err(errno::EBADF);
-        };
-        let Some(window) = layer.window() else {
-            return Err(errno::EBADF);
-        };
-
-        crate::font::write_string(
-            &window.borrow_mut().writer(),
-            x as usize,
-            y as usize,
-            s,
-            &color,
-        );
-        lm.draw_id(layer_id);
+    do_win_func(layer_id, |window| {
+        crate::font::write_string(&window.writer(), x as usize, y as usize, s, &color);
         Ok(())
-    });
+    })
+}
 
-    match res {
-        Ok(()) => SyscallResult { value: 0, error: 0 },
-        Err(err) => SyscallResult {
-            value: 0,
-            error: err,
-        },
-    }
+pub extern "C" fn sys_win_fill_rectrange(
+    layer_id: u64,
+    x: u64,
+    y: u64,
+    w: u64,
+    h: u64,
+    color: u64,
+) -> SyscallResult {
+    let layer_id = layer_id as u32;
+    let color = to_color(color as u32);
+    let pos = Vector2D {
+        x: x as usize,
+        y: y as usize,
+    };
+    let size = Vector2D {
+        x: w as usize,
+        y: h as usize,
+    };
+
+    do_win_func(layer_id, |window| {
+        crate::graphics::fill_rectangle(&window.writer(), &pos, &size, &color);
+        Ok(())
+    })
 }
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 5] = [
+pub static SYSCALL_TABLE: [SyscallFn; 6] = [
     sys_log_string,
     sys_put_string,
     sys_exit,
     sys_open_window,
     sys_win_write_stirng,
+    sys_win_fill_rectrange,
 ];
 
 global_asm!(
