@@ -220,15 +220,13 @@ where
 
 /// システムコール 0x80000004: ウィンドウに文字列を描画 (WinWriteString)
 pub extern "C" fn sys_win_write_stirng(
-    layer_id: u64,
+    layer_id_flags: u64,
     x: u64,
     y: u64,
     color: u64,
     s_ptr: u64,
     _arg6: u64,
 ) -> SyscallResult {
-    let layer_id = layer_id as u32;
-
     let s = if s_ptr != 0 {
         let mut len = 0;
         unsafe {
@@ -244,21 +242,20 @@ pub extern "C" fn sys_win_write_stirng(
 
     let color = crate::graphics::to_color(color as u32);
 
-    do_win_func(layer_id as u64, |window| {
+    do_win_func(layer_id_flags, |window| {
         crate::font::write_string(&window.writer(), x as usize, y as usize, s, &color);
         Ok(())
     })
 }
 
 pub extern "C" fn sys_win_fill_rectrange(
-    layer_id: u64,
+    layer_id_flags: u64,
     x: u64,
     y: u64,
     w: u64,
     h: u64,
     color: u64,
 ) -> SyscallResult {
-    let layer_id = layer_id as u32;
     let color = to_color(color as u32);
     let pos = Vector2D {
         x: x as usize,
@@ -269,7 +266,7 @@ pub extern "C" fn sys_win_fill_rectrange(
         y: h as usize,
     };
 
-    do_win_func(layer_id as u64, |window| {
+    do_win_func(layer_id_flags, |window| {
         crate::graphics::fill_rectangle(&window.writer(), &pos, &size, &color);
         Ok(())
     })
