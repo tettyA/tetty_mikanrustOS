@@ -2,7 +2,9 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use syscall::{exit, sys_open_window, sys_win_fill_rectangle};
+use syscall::{
+    exit, print, print_i64, sys_get_current_tick, sys_open_window, sys_win_fill_rectangle,
+};
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
@@ -74,6 +76,10 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> ! {
         }
     }
 
+    let tick_start_res = sys_get_current_tick();
+    let tick_start = tick_start_res.value;
+    let timer_freq = tick_start_res.error as u64;
+
     let mut rng = SimpleRng::new(12345);
     for _ in 0..num_stars {
         let x = rng.gen_range(0, WIDTH - 2) as i32;
@@ -82,5 +88,11 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> ! {
         sys_win_fill_rectangle(layer_id, 4 + x, 24 + y, 2, 2, 0xfff100);
     }
 
+    let tick_end = sys_get_current_tick().value;
+    let elapsed_ms = (tick_end - tick_start) * 1000 / timer_freq;
+    print_i64(num_stars as i64);
+    print(" stars in ");
+    print_i64(elapsed_ms as i64);
+    print(" ms.\n");
     exit(0);
 }

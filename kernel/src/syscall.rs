@@ -3,6 +3,7 @@ use core::arch::global_asm;
 use crate::{
     graphics::{Vector2D, to_color},
     layer::LAYER_MANAGER,
+    timer::TIMER_MANAGER,
     window::{self, Window},
 };
 
@@ -268,15 +269,31 @@ pub extern "C" fn sys_win_fill_rectrange(
         Ok(())
     })
 }
+
+pub extern "C" fn sys_get_current_tick(
+    _arg1: u64,
+    _arg2: u64,
+    _arg3: u64,
+    _arg4: u64,
+    _arg5: u64,
+    _arg6: u64,
+) -> SyscallResult {
+    let tick = TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()));
+    SyscallResult {
+        value: tick,
+        error: crate::timer::TIMER_FREQ as i32,
+    }
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 6] = [
+pub static SYSCALL_TABLE: [SyscallFn; 7] = [
     sys_log_string,
     sys_put_string,
     sys_exit,
     sys_open_window,
     sys_win_write_stirng,
     sys_win_fill_rectrange,
+    sys_get_current_tick,
 ];
 
 global_asm!(

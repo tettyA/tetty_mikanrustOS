@@ -180,6 +180,24 @@ pub fn sys_win_fill_rectangle(
     }
     SyscallResult { value, error }
 }
+/// システムコール 0x80000006: 現在のタイマ値 (tick) と周波数を取得 (GetCurrentTick)
+/// 戻り値: SyscallResult { value: 現在のtick値, error: タイマ周波数(Hz) }
+pub fn sys_get_current_tick() -> SyscallResult {
+    let mut value: u64;
+    let mut error: i32;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_0006u32,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") value,
+            lateout("rdx") error,
+            clobber_abi("C"),
+        );
+    }
+    SyscallResult { value, error }
+}
 /// 終了コードを指定してプロセスを終了する。
 pub fn exit(exit_code: i32) -> ! {
     sys_exit(exit_code);
