@@ -16,7 +16,7 @@ pub unsafe extern "C" fn main(_argc: i32, _argv: *const *const u8) -> ! {
     if res.error != 0 {
         exit(res.error);
     }
-    let layer_id = res.value as u32;
+    let layer_id = res.value;
 
     // 赤色 (0xc00000)
     sys_win_write_string(layer_id, 7, 24, 0xc00000, "hello world!");

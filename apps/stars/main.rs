@@ -4,6 +4,7 @@
 use core::panic::PanicInfo;
 use syscall::{
     exit, print, print_i64, sys_get_current_tick, sys_open_window, sys_win_fill_rectangle,
+    sys_win_redraw, LAYER_NO_REDRAW,
 };
 
 #[panic_handler]
@@ -62,10 +63,17 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> ! {
     if res.error != 0 {
         exit(res.error);
     }
-    let layer_id = res.value as u32;
+    let layer_id = res.value;
 
     // ウィンドウ背景を黒色 (0x000000) で塗りつぶす
-    sys_win_fill_rectangle(layer_id, 4, 24, WIDTH as i32, HEIGHT as i32, 0x000000);
+    sys_win_fill_rectangle(
+        layer_id | LAYER_NO_REDRAW,
+        4,
+        24,
+        WIDTH as i32,
+        HEIGHT as i32,
+        0x000000,
+    );
 
     let mut num_stars = 100;
     if argc >= 2 {
@@ -85,9 +93,10 @@ pub unsafe extern "C" fn main(argc: i32, argv: *const *const u8) -> ! {
         let x = rng.gen_range(0, WIDTH - 2) as i32;
         let y = rng.gen_range(0, HEIGHT - 2) as i32;
         // 2x2 の黄色い星 (0xfff100) を描画
-        sys_win_fill_rectangle(layer_id, 4 + x, 24 + y, 2, 2, 0xfff100);
+        sys_win_fill_rectangle(layer_id | LAYER_NO_REDRAW, 4 + x, 24 + y, 2, 2, 0xfff100);
     }
 
+    sys_win_redraw(layer_id);
     let tick_end = sys_get_current_tick().value;
     let elapsed_ms = (tick_end - tick_start) * 1000 / timer_freq;
     print_i64(num_stars as i64);

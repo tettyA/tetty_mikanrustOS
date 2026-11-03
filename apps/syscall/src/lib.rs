@@ -8,6 +8,7 @@ pub struct SyscallResult {
     pub error: i32,
 }
 
+pub const LAYER_NO_REDRAW: u64 = 0x0000_0001_0000_0000;
 /// システムコール 0x80000000: ログ文字列出力
 pub fn sys_log_string(level: u64, message: *const u8) -> SyscallResult {
     let mut value: u64;
@@ -62,8 +63,13 @@ fn sys_exit(exit_code: i32) -> ! {
 }
 
 /// システムコール 0x80000004: ウィンドウに文字列を描画 (WinWriteString)
-// ★【追加】新規ラッパー関数
-pub fn sys_win_write_string(layer_id: u32, x: i32, y: i32, color: u32, s: &str) -> SyscallResult {
+pub fn sys_win_write_string(
+    layer_id_flags: u64,
+    x: i32,
+    y: i32,
+    color: u32,
+    s: &str,
+) -> SyscallResult {
     let mut value: u64;
     let mut error: i32;
     // 文字列を NUL 終端にして渡すため一時バッファにコピー
@@ -75,7 +81,7 @@ pub fn sys_win_write_string(layer_id: u32, x: i32, y: i32, color: u32, s: &str) 
         core::arch::asm!(
             "syscall",
             in("eax") 0x8000_0004u32,
-            in("rdi") layer_id as u64,
+            in("rdi") layer_id_flags,
             in("rsi") x as u64,
             in("rdx") y as u64,
             in("r10") color as u64,
@@ -152,7 +158,7 @@ pub fn print_i64(mut val: i64) {
 
 /// システムコール 0x80000005: ウィンドウに矩形を描画 (WinFillRectangle)
 pub fn sys_win_fill_rectangle(
-    layer_id: u32,
+    layer_id_flags: u64,
     x: i32,
     y: i32,
     w: i32,
@@ -165,7 +171,7 @@ pub fn sys_win_fill_rectangle(
         core::arch::asm!(
             "syscall",
             in("eax") 0x8000_0005u32,
-            in("rdi") layer_id as u64,
+            in("rdi") layer_id_flags,
             in("rsi") x as u64,
             in("rdx") y as u64,
             in("r10") w as u64,
@@ -189,6 +195,24 @@ pub fn sys_get_current_tick() -> SyscallResult {
         core::arch::asm!(
             "syscall",
             in("eax") 0x8000_0006u32,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") value,
+            lateout("rdx") error,
+            clobber_abi("C"),
+        );
+    }
+    SyscallResult { value, error }
+}
+/// システムコール 0x80000007: ウィンドウを再描画 (WinRedraw)
+pub fn sys_win_redraw(layer_id_flags: u64) -> SyscallResult {
+    let mut value: u64;
+    let mut error: i32;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_0007u32,
+            in("rdi") layer_id_flags,
             out("rcx") _,
             out("r11") _,
             lateout("rax") value,

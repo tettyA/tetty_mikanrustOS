@@ -185,10 +185,13 @@ pub extern "C" fn sys_open_window(
     }
 }
 
-fn do_win_func<F>(layer_id: u32, f: F) -> SyscallResult
+fn do_win_func<F>(layer_id_flags: u64, f: F) -> SyscallResult
 where
     F: FnOnce(&mut Window) -> Result<(), i32>,
 {
+    let layer_flags = (layer_id_flags >> 32) as u32;
+    let layer_id = (layer_id_flags & 0xffff_ffff) as u32;
+
     let res = LAYER_MANAGER.with(|lm| {
         let Some(lm) = lm.as_mut() else {
             return Err(errno::EBADF);
@@ -201,7 +204,9 @@ where
         };
 
         f(&mut window.borrow_mut())?;
-        lm.draw_id(layer_id);
+        if (layer_flags & 1) == 0 {
+            lm.draw_id(layer_id);
+        }
         Ok(())
     });
     match res {
@@ -239,7 +244,7 @@ pub extern "C" fn sys_win_write_stirng(
 
     let color = crate::graphics::to_color(color as u32);
 
-    do_win_func(layer_id, |window| {
+    do_win_func(layer_id as u64, |window| {
         crate::font::write_string(&window.writer(), x as usize, y as usize, s, &color);
         Ok(())
     })
@@ -264,7 +269,7 @@ pub extern "C" fn sys_win_fill_rectrange(
         y: h as usize,
     };
 
-    do_win_func(layer_id, |window| {
+    do_win_func(layer_id as u64, |window| {
         crate::graphics::fill_rectangle(&window.writer(), &pos, &size, &color);
         Ok(())
     })
@@ -284,9 +289,19 @@ pub extern "C" fn sys_get_current_tick(
         error: crate::timer::TIMER_FREQ as i32,
     }
 }
+pub extern "C" fn sys_win_redraw(
+    layer_id_flags: u64,
+    _arg2: u64,
+    _arg3: u64,
+    _arg4: u64,
+    _arg5: u64,
+    _arg6: u64,
+) -> SyscallResult {
+    do_win_func(layer_id_flags, |_window| Ok(()))
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 7] = [
+pub static SYSCALL_TABLE: [SyscallFn; 8] = [
     sys_log_string,
     sys_put_string,
     sys_exit,
@@ -294,6 +309,7 @@ pub static SYSCALL_TABLE: [SyscallFn; 7] = [
     sys_win_write_stirng,
     sys_win_fill_rectrange,
     sys_get_current_tick,
+    sys_win_redraw,
 ];
 
 global_asm!(
