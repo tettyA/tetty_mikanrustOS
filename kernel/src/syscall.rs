@@ -3,6 +3,8 @@ use core::arch::global_asm;
 use crate::{
     graphics::{PixelDraw, Rectangle, Vector2D, to_color},
     layer::LAYER_MANAGER,
+    message,
+    task::{receive_message, sleep},
     timer::TIMER_MANAGER,
     window::{self, Window},
 };
@@ -33,8 +35,17 @@ pub mod errno {
     pub const EPERM: i32 = 1;
     pub const E2BIG: i32 = 7;
     pub const EBADF: i32 = 9;
+    pub const EFAULT: i32 = 14; // 不正なポインタ
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppEvent {
+    pub event_type: u32,
+}
+pub mod app_event {
+    pub const QUIT: u32 = 0;
+}
 // システムコール関数の型定義 (最大6引数、戻り値 SyscallResult)
 pub type SyscallFn = extern "C" fn(u64, u64, u64, u64, u64, u64) -> SyscallResult;
 
@@ -178,6 +189,11 @@ pub extern "C" fn sys_open_window(
         lm.activate(layer_id);
         layer_id
     });
+
+    // レイヤーと現在のタスクを紐付ける
+    let task_id = crate::task::current_task_id();
+
+    crate::layer::register_layer_task(layer_id, task_id);
 
     SyscallResult {
         value: layer_id as u64,
@@ -398,6 +414,7 @@ pub extern "C" fn sys_close_window(
         lm.activate(0);
         lm.remove_layer(layer_id);
         lm.draw_area(area);
+        crate::layer::unregister_layer_task(layer_id);
         Ok(())
     });
     match res {
@@ -408,9 +425,61 @@ pub extern "C" fn sys_close_window(
         },
     }
 }
+
+/// システムコール 0x8000000a: イベント読み込み (ReadEvent)
+pub extern "C" fn sys_read_event(
+    events_ptr: u64,
+    len: u64,
+    _arg3: u64,
+    _arg4: u64,
+    _arg5: u64,
+    _arg6: u64,
+) -> SyscallResult {
+    if events_ptr < 0x8000_0000_0000_0000 {
+        return SyscallResult {
+            value: 0,
+            error: errno::EFAULT,
+        };
+    }
+    let app_events = events_ptr as *mut AppEvent;
+    let len = len as usize;
+    let task_id = crate::task::current_task_id();
+    let mut i = 0;
+
+    while i < len {
+        let msg = receive_message(task_id);
+        if msg.is_none() && i == 0 {
+            let _ = sleep(task_id);
+            continue;
+        }
+        let Some(msg) = msg else {
+            break;
+        };
+
+        match msg {
+            crate::message::Message::KeyPush {
+                keycode, modifier, ..
+            } => {
+                // keycode 20 は 'q' キー。modifier の bit0 (LControl) または bit4 (RControl)
+                if keycode == 20 && (modifier & 0b0001_0001) != 0 {
+                    unsafe {
+                        (*app_events.add(i)).event_type = app_event::QUIT;
+                    }
+                    i += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    SyscallResult {
+        value: i as u64,
+        error: 0,
+    }
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 10] = [
+pub static SYSCALL_TABLE: [SyscallFn; 11] = [
     sys_log_string,
     sys_put_string,
     sys_exit,
@@ -421,8 +490,12 @@ pub static SYSCALL_TABLE: [SyscallFn; 10] = [
     sys_win_redraw,
     sys_win_draw_line,
     sys_close_window,
+    sys_read_event,
 ];
-
+#[unsafe(no_mangle)]
+pub extern "C" fn GetCurrentTaskOSStackPointer() -> u64 {
+    crate::task::current_task_os_stack_ptr()
+}
 global_asm!(
     r#"
 .global CallApp
@@ -445,14 +518,39 @@ SyscallEntry:  # void SyscallEntry(void);
     push rbp
     push rcx   # ユーザー空間の元の RIP (syscall 命令が RCX に自動退避)
     push r11   # ユーザー空間の元の RFLAGS (syscall 命令が R11 に自動退避)
-    push rax   # ★【追加】システムコール番号をスタックに保存
+    push rax   # システムコール番号をスタックに保存
     mov rcx, r10        # syscall ABI では第4引数は R10 に入るため、C ABI の RCX に移動
     and eax, 0x7fffffff # システムコール番号の最上位ビットをマスク (0x80000000 -> 0)
     mov rbp, rsp
-    and rsp, -16        # 16バイト・スタックアライメント
+    # 全引数レジスタとシステムコール番号 (EAX) を一時退避
+    push rax            # [rbp - 8]
+    push rdi            # [rbp - 16]
+    push rsi            # [rbp - 24]
+    push rdx            # [rbp - 32]
+    push rcx            # [rbp - 40]
+    push r8             # [rbp - 48]
+    push r9             # [rbp - 56]
+    sub rsp, 8          # 16バイト・アライメント調整
+    cli
+    call GetCurrentTaskOSStackPointer
+    sti
+    # RAX に task.os_stack_ptr が返る
+    # OS スタックに切り替え
+    mov rsp, rax
+    and rsp, -16
+    # ユーザースタック (RBP) から全引数と EAX を復元
+    mov r9,  [rbp - 56]
+    mov r8,  [rbp - 48]
+    mov rcx, [rbp - 40]
+    mov rdx, [rbp - 32]
+    mov rsi, [rbp - 24]
+    mov rdi, [rbp - 16]
+    mov eax, [rbp - 8]
+    # システムコール関数を実行 (OS スタック上で動作)
     lea r11, [rip + SYSCALL_TABLE]
     call qword ptr [r11 + 8 * rax]
     # rax には value, rdx には error が格納されている
+    # ユーザースタックに復帰
     mov rsp, rbp
     pop rsi             # 保存していたシステムコール番号を復帰
     cmp esi, 0x80000002 # Exit システムコール (0x80000002) か？

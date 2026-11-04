@@ -2,7 +2,10 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use syscall::{exit, sys_close_window, sys_open_window, sys_win_write_string};
+use syscall::{
+    app_event, exit, print, sys_close_window, sys_open_window, sys_read_event,
+    sys_win_write_string, AppEvent,
+};
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
@@ -25,6 +28,18 @@ pub unsafe extern "C" fn main(_argc: i32, _argv: *const *const u8) -> ! {
     // 青色 (0x0000c0)
     sys_win_write_string(layer_id, 40, 56, 0x0000c0, "hello world!");
 
+    let mut events = [AppEvent { event_type: 0 }; 1];
+    loop {
+        let res = sys_read_event(events.as_mut_ptr(), 1);
+
+        if res.error != 0 {
+            print("ReadEvent failed\n");
+            break;
+        }
+        if events[0].event_type == app_event::QUIT {
+            break;
+        }
+    }
     sys_close_window(layer_id);
 
     exit(0);

@@ -7,7 +7,14 @@ pub struct SyscallResult {
     pub value: u64,
     pub error: i32,
 }
-
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppEvent {
+    pub event_type: u32,
+}
+pub mod app_event {
+    pub const QUIT: u32 = 0;
+}
 pub const LAYER_NO_REDRAW: u64 = 0x0000_0001_0000_0000;
 /// システムコール 0x80000000: ログ文字列出力
 pub fn sys_log_string(level: u64, message: *const u8) -> SyscallResult {
@@ -266,6 +273,25 @@ pub fn sys_close_window(layer_id_flags: u64) -> SyscallResult {
             "syscall",
             in("eax") 0x8000_0009u32,
             in("rdi") layer_id_flags,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") value,
+            lateout("rdx") error,
+            clobber_abi("C"),
+        );
+    }
+    SyscallResult { value, error }
+}
+/// システムコール 0x8000000a: イベント読み込み (ReadEvent)
+pub fn sys_read_event(events: *mut AppEvent, len: usize) -> SyscallResult {
+    let mut value: u64;
+    let mut error: i32;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_000au32,
+            in("rdi") events as u64,
+            in("rsi") len as u64,
             out("rcx") _,
             out("r11") _,
             lateout("rax") value,

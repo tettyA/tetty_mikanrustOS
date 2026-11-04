@@ -391,6 +391,13 @@ pub fn register_layer_task(layer_id: u32, task_id: u64) {
     });
 }
 
+/// レイヤIDとタスクIDの対応を解除する
+pub fn unregister_layer_task(layer_id: u32) {
+    LAYER_TASK_MAP.with(|map| {
+        map.remove(&layer_id);
+    });
+}
+
 /// レイヤIDに対応するタスクIDを取得する。
 pub fn get_task_by_layer(layer_id: u32) -> Option<u64> {
     LAYER_TASK_MAP.with(|map| map.get(&layer_id).copied())
