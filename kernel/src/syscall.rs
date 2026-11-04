@@ -3,10 +3,9 @@ use core::arch::global_asm;
 use crate::{
     graphics::{PixelDraw, Rectangle, Vector2D, to_color},
     layer::LAYER_MANAGER,
-    message,
     task::{receive_message, sleep},
     timer::TIMER_MANAGER,
-    window::{self, Window},
+    window::Window,
 };
 
 const IA32_EFER: u32 = 0xc000_0080;
