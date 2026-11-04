@@ -1,7 +1,7 @@
 use core::arch::global_asm;
 
 use crate::{
-    graphics::{PixelDraw, Vector2D, to_color},
+    graphics::{PixelDraw, Rectangle, Vector2D, to_color},
     layer::LAYER_MANAGER,
     timer::TIMER_MANAGER,
     window::{self, Window},
@@ -363,9 +363,54 @@ pub extern "C" fn sys_win_draw_line(
         Ok(())
     })
 }
+
+pub extern "C" fn sys_close_window(
+    layer_id_flags: u64,
+    _arg2: u64,
+    _arg3: u64,
+    _arg4: u64,
+    _arg5: u64,
+    _arg6: u64,
+) -> SyscallResult {
+    let layer_id = (layer_id_flags & 0xffff_ffff) as u32;
+
+    let res = LAYER_MANAGER.with(|lm| {
+        let Some(lm) = lm.as_mut() else {
+            return Err(errno::EBADF);
+        };
+        let Some(layer) = lm.find_layer(layer_id) else {
+            return Err(errno::EBADF);
+        };
+
+        let area = if let Some(window) = &layer.window() {
+            let win = window.borrow();
+            Rectangle {
+                pos_lu: layer.pos,
+                size: Vector2D {
+                    x: win.width() as i32,
+                    y: win.height() as i32,
+                },
+            }
+        } else {
+            return Err(errno::EBADF);
+        };
+
+        lm.activate(0);
+        lm.remove_layer(layer_id);
+        lm.draw_area(area);
+        Ok(())
+    });
+    match res {
+        Ok(()) => SyscallResult { value: 0, error: 0 },
+        Err(err) => SyscallResult {
+            value: 0,
+            error: err,
+        },
+    }
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 9] = [
+pub static SYSCALL_TABLE: [SyscallFn; 10] = [
     sys_log_string,
     sys_put_string,
     sys_exit,
@@ -375,6 +420,7 @@ pub static SYSCALL_TABLE: [SyscallFn; 9] = [
     sys_get_current_tick,
     sys_win_redraw,
     sys_win_draw_line,
+    sys_close_window,
 ];
 
 global_asm!(

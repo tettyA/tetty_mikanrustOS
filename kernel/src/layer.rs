@@ -188,6 +188,11 @@ impl LayerManager {
     pub fn hide_layer(&mut self, id: u32) {
         self.layer_stack.retain(|&x| x != id);
     }
+
+    pub fn remove_layer(&mut self, id: u32) {
+        self.hide_layer(id);
+        self.layers.retain(|layer| layer.id != id);
+    }
     pub fn activate(&mut self, layer_id: u32) {
         if self.active_layer == layer_id {
             return;

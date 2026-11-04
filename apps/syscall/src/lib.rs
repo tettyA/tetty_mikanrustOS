@@ -257,3 +257,21 @@ pub fn sys_win_draw_line(
     }
     SyscallResult { value, error }
 }
+/// システムコール 0x80000009: ウィンドウを閉じる (CloseWindow)
+pub fn sys_close_window(layer_id_flags: u64) -> SyscallResult {
+    let mut value: u64;
+    let mut error: i32;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_0009u32,
+            in("rdi") layer_id_flags,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") value,
+            lateout("rdx") error,
+            clobber_abi("C"),
+        );
+    }
+    SyscallResult { value, error }
+}

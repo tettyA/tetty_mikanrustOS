@@ -2,7 +2,7 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use syscall::{exit, sys_open_window, sys_win_write_string};
+use syscall::{exit, sys_close_window, sys_open_window, sys_win_write_string};
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
@@ -24,6 +24,8 @@ pub unsafe extern "C" fn main(_argc: i32, _argv: *const *const u8) -> ! {
     sys_win_write_string(layer_id, 24, 40, 0x00c000, "hello world!");
     // 青色 (0x0000c0)
     sys_win_write_string(layer_id, 40, 56, 0x0000c0, "hello world!");
+
+    sys_close_window(layer_id);
 
     exit(0);
 }
