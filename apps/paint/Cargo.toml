@@ -1,0 +1,13 @@
+[package]
+name = "paint"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+syscall = { path = "../syscall" }
+
+[[bin]]
+name = "paint"
+path = "main.rs"
+test = false
+bench = false

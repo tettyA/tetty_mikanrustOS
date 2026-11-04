@@ -8,7 +8,12 @@ use crate::{
     layer::LAYER_MANAGER,
 };
 
-fn send_mouse_message(newpos: Vector2D<i32>, posdiff: Vector2D<i32>, buttons: u8) {
+fn send_mouse_message(
+    newpos: Vector2D<i32>,
+    posdiff: Vector2D<i32>,
+    buttons: u8,
+    previous_buttons: u8,
+) {
     let act = get_active();
     if act == 0 {
         return;
@@ -24,8 +29,8 @@ fn send_mouse_message(newpos: Vector2D<i32>, posdiff: Vector2D<i32>, buttons: u8
         return;
     };
 
+    let relpos = newpos - layer_pos;
     if posdiff.x != 0 || posdiff.y != 0 {
-        let relpos = newpos - layer_pos;
         let msg = Message::MouseMove {
             x: relpos.x,
             y: relpos.y,
@@ -35,6 +40,21 @@ fn send_mouse_message(newpos: Vector2D<i32>, posdiff: Vector2D<i32>, buttons: u8
         };
 
         let _ = send_message(task_id, msg);
+    }
+
+    if previous_buttons != buttons {
+        let diff = previous_buttons ^ buttons;
+        for i in 0..8 {
+            if ((diff >> i) & 1) != 0 {
+                let msg = Message::MouseButton {
+                    x: relpos.x,
+                    y: relpos.y,
+                    press: ((buttons >> i) & 1) != 0,
+                    button: i as u8,
+                };
+                let _ = send_message(task_id, msg);
+            }
+        }
     }
 }
 pub const MOUSE_CURSOR_WIDTH: usize = 15;
@@ -137,17 +157,24 @@ impl MouseCursor {
         if !previous_left_pressed && left_pressed {
             // 左ボタンが押された瞬間
             let mut target_layer_id = 0;
+            let mut start_drag = false;
             LAYER_MANAGER.with(|lm| {
                 if let Some(lm) = lm {
                     if let Some(layer) = lm.find_layer_by_position(self.position, self.layer_id) {
+                        target_layer_id = layer.id;
                         if layer.is_draggable() {
-                            target_layer_id = layer.id;
+                            let y_layer = self.position.y - layer.pos.y;
+                            if y_layer < crate::window::TOP_LEFT_MARGIN.y as i32 {
+                                start_drag = true;
+                            }
                         }
                     }
                 }
             });
             if target_layer_id > 0 {
-                self.drag_layer_id = target_layer_id;
+                if start_drag {
+                    self.drag_layer_id = target_layer_id;
+                }
                 crate::layer::activate(target_layer_id);
                 printk!(
                     "mouse_observer: layer_id = {}, pos = ({}, {})\n",
@@ -186,6 +213,7 @@ impl MouseCursor {
                     y: posdiff[1],
                 },
                 _buttons,
+                self.previous_buttons,
             );
         }
 

@@ -542,6 +542,7 @@ fn kernel_main_new_stack(
             }
             Message::LayerFinish => {}
             Message::MouseMove { .. } => {}
+            Message::MouseButton { .. } => {}
         }
     }
 }

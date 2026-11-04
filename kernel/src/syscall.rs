@@ -47,11 +47,19 @@ pub struct MouseMoveArgs {
     pub dy: i32,
     pub buttons: u8,
 }
-
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MouseButtonArgs {
+    pub x: i32,
+    pub y: i32,
+    pub press: i32, // 1: press, 0: release
+    pub button: i32,
+}
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub union AppEventArgs {
     pub mouse_move: MouseMoveArgs,
+    pub mouse_button: MouseButtonArgs,
 }
 
 #[repr(C)]
@@ -80,6 +88,7 @@ impl AppEvent {
 pub mod app_event {
     pub const QUIT: u32 = 0;
     pub const MOUSE_MOVE: u32 = 1;
+    pub const MOUSE_BUTTON: u32 = 2;
 }
 // システムコール関数の型定義 (最大6引数、戻り値 SyscallResult)
 pub type SyscallFn = extern "C" fn(u64, u64, u64, u64, u64, u64) -> SyscallResult;
@@ -524,6 +533,24 @@ pub extern "C" fn sys_read_event(
                 i += 1;
             }
 
+            message::Message::MouseButton {
+                x,
+                y,
+                press,
+                button,
+            } => {
+                unsafe {
+                    let ev = &mut *app_events.add(i);
+                    ev.event_type = app_event::MOUSE_BUTTON;
+                    ev.arg.mouse_button = MouseButtonArgs {
+                        x,
+                        y,
+                        press: if press { 1 } else { 0 },
+                        button: button as i32,
+                    }
+                };
+                i += 1;
+            }
             _ => {}
         }
     }

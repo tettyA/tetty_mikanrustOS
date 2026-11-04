@@ -3,6 +3,14 @@
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MouseButtonArgs {
+    pub x: i32,
+    pub y: i32,
+    pub press: i32, // 1: press, 0: release
+    pub button: i32,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MouseMoveArgs {
     pub x: i32,
     pub y: i32,
@@ -14,6 +22,7 @@ pub struct MouseMoveArgs {
 #[derive(Clone, Copy)]
 pub union AppEventArgs {
     pub mouse_move: MouseMoveArgs,
+    pub mouse_button: MouseButtonArgs,
 }
 
 #[repr(C)]
@@ -47,6 +56,7 @@ impl AppEvent {
 pub mod app_event {
     pub const QUIT: u32 = 0;
     pub const MOUSE_MOVE: u32 = 1;
+    pub const MOUSE_BUTTON: u32 = 2;
 }
 pub const LAYER_NO_REDRAW: u64 = 0x0000_0001_0000_0000;
 /// システムコール 0x80000000: ログ文字列出力
