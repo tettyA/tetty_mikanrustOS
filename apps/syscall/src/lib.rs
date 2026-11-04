@@ -226,3 +226,34 @@ pub fn sys_win_redraw(layer_id_flags: u64) -> SyscallResult {
 pub fn exit(exit_code: i32) -> ! {
     sys_exit(exit_code);
 }
+
+/// システムコール 0x80000008: ウィンドウに線を描画 (WinDrawLine)
+pub fn sys_win_draw_line(
+    layer_id_flags: u64,
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    color: u32,
+) -> SyscallResult {
+    let mut value: u64;
+    let mut error: i32;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_0008u32,
+            in("rdi") layer_id_flags,
+            in("rsi") x0 as u64,
+            in("rdx") y0 as u64,
+            in("r10") x1 as u64,
+            in("r8") y1 as u64,
+            in("r9") color as u64,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") value,
+            lateout("rdx") error,
+            clobber_abi("C"),
+        );
+    }
+    SyscallResult { value, error }
+}

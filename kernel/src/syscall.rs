@@ -1,7 +1,7 @@
 use core::arch::global_asm;
 
 use crate::{
-    graphics::{Vector2D, to_color},
+    graphics::{PixelDraw, Vector2D, to_color},
     layer::LAYER_MANAGER,
     timer::TIMER_MANAGER,
     window::{self, Window},
@@ -296,9 +296,76 @@ pub extern "C" fn sys_win_redraw(
 ) -> SyscallResult {
     do_win_func(layer_id_flags, |_window| Ok(()))
 }
+
+pub extern "C" fn sys_win_draw_line(
+    layer_id_flags: u64,
+    x0: u64,
+    y0: u64,
+    x1: u64,
+    y1: u64,
+    color: u64,
+) -> SyscallResult {
+    let mut x0 = x0 as i32;
+    let mut y0 = y0 as i32;
+    let mut x1 = x1 as i32;
+    let mut y1 = y1 as i32;
+    let color = crate::graphics::to_color(color as u32);
+
+    do_win_func(layer_id_flags, |window| {
+        let sign = |x: i32| -> i32 {
+            if x > 0 {
+                1
+            } else if x < 0 {
+                -1
+            } else {
+                0
+            }
+        };
+        let mut dx = x1 - x0 + sign(x1 - x0);
+        let mut dy = y1 - y0 + sign(y1 - y0);
+
+        if dx == 0 && dy == 0 {
+            if x0 >= 0 && y0 >= 0 {
+                window.writer().write(x0 as usize, y0 as usize, &color);
+            }
+            return Ok(());
+        }
+
+        // 傾きが緩やかな場合 (|dx| >= |dy|): x を 1 ずつ進めて y を計算
+        if dx.abs() >= dy.abs() {
+            if dx < 0 {
+                core::mem::swap(&mut x0, &mut x1);
+                core::mem::swap(&mut y0, &mut y1);
+                dx = -dx;
+                dy = -dy;
+            }
+            for x in x0..=x1 {
+                let y = (dy as i64 * (x - x0) as i64) / dx as i64 + y0 as i64;
+                if x >= 0 && y >= 0 {
+                    window.writer().write(x as usize, y as usize, &color);
+                }
+            }
+        } else {
+            // 傾きが急な場合 (|dx| < |dy|): y を 1 ずつ進めて x を計算
+            if dy < 0 {
+                core::mem::swap(&mut x0, &mut x1);
+                core::mem::swap(&mut y0, &mut y1);
+                dx = -dx;
+                dy = -dy;
+            }
+            for y in y0..=y1 {
+                let x = (dx as i64 * (y - y0) as i64) / dy as i64 + x0 as i64;
+                if x >= 0 && y >= 0 {
+                    window.writer().write(x as usize, y as usize, &color);
+                }
+            }
+        }
+        Ok(())
+    })
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 8] = [
+pub static SYSCALL_TABLE: [SyscallFn; 9] = [
     sys_log_string,
     sys_put_string,
     sys_exit,
@@ -307,6 +374,7 @@ pub static SYSCALL_TABLE: [SyscallFn; 8] = [
     sys_win_fill_rectrange,
     sys_get_current_tick,
     sys_win_redraw,
+    sys_win_draw_line,
 ];
 
 global_asm!(

@@ -6,5 +6,6 @@ members = [
     "apps/syscall",
     "apps/winhello",
     "apps/stars",
+    "apps/lines",
 ]
 
