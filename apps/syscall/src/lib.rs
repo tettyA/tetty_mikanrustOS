@@ -3,17 +3,50 @@
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MouseMoveArgs {
+    pub x: i32,
+    pub y: i32,
+    pub dx: i32,
+    pub dy: i32,
+    pub buttons: u8,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub union AppEventArgs {
+    pub mouse_move: MouseMoveArgs,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SyscallResult {
     pub value: u64,
     pub error: i32,
 }
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 pub struct AppEvent {
     pub event_type: u32,
+    pub arg: AppEventArgs,
+}
+impl AppEvent {
+    pub const fn empty() -> Self {
+        Self {
+            event_type: 0,
+            arg: AppEventArgs {
+                mouse_move: MouseMoveArgs {
+                    x: 0,
+                    y: 0,
+                    dx: 0,
+                    dy: 0,
+                    buttons: 0,
+                },
+            },
+        }
+    }
 }
 pub mod app_event {
     pub const QUIT: u32 = 0;
+    pub const MOUSE_MOVE: u32 = 1;
 }
 pub const LAYER_NO_REDRAW: u64 = 0x0000_0001_0000_0000;
 /// システムコール 0x80000000: ログ文字列出力

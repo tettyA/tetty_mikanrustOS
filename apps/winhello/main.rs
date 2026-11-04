@@ -28,7 +28,7 @@ pub unsafe extern "C" fn main(_argc: i32, _argv: *const *const u8) -> ! {
     // 青色 (0x0000c0)
     sys_win_write_string(layer_id, 40, 56, 0x0000c0, "hello world!");
 
-    let mut events = [AppEvent { event_type: 0 }; 1];
+    let mut events = [AppEvent::empty(); 1];
     loop {
         let res = sys_read_event(events.as_mut_ptr(), 1);
 

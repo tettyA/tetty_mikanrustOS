@@ -1,10 +1,42 @@
 use crate::global::Global;
+use crate::layer::{get_active, get_task_by_layer};
+use crate::message::Message;
 use crate::printk;
+use crate::task::send_message;
 use crate::{
     graphics::{PixelColor, PixelDraw, Vector2D},
     layer::LAYER_MANAGER,
 };
 
+fn send_mouse_message(newpos: Vector2D<i32>, posdiff: Vector2D<i32>, buttons: u8) {
+    let act = get_active();
+    if act == 0 {
+        return;
+    }
+
+    let layer_pos =
+        LAYER_MANAGER.with(|lm| lm.as_mut().and_then(|lm| lm.find_layer(act)).map(|l| l.pos));
+
+    let Some(layer_pos) = layer_pos else {
+        return;
+    };
+    let Some(task_id) = get_task_by_layer(act) else {
+        return;
+    };
+
+    if posdiff.x != 0 || posdiff.y != 0 {
+        let relpos = newpos - layer_pos;
+        let msg = Message::MouseMove {
+            x: relpos.x,
+            y: relpos.y,
+            dx: posdiff.x,
+            dy: posdiff.y,
+            buttons,
+        };
+
+        let _ = send_message(task_id, msg);
+    }
+}
 pub const MOUSE_CURSOR_WIDTH: usize = 15;
 pub const MOUSE_CURSOR_HEIGHT: usize = 24;
 pub const MOUSE_CURSOR_TRANSPARENT_COLOR: PixelColor = PixelColor {
@@ -144,6 +176,17 @@ impl MouseCursor {
         } else if previous_left_pressed && !left_pressed {
             // 左ボタンが離された瞬間
             self.drag_layer_id = 0;
+        }
+        // ウィンドウドラッグ中でなければ，マウスイベントを送信
+        if self.drag_layer_id == 0 {
+            send_mouse_message(
+                self.position,
+                Vector2D {
+                    x: posdiff[0],
+                    y: posdiff[1],
+                },
+                _buttons,
+            );
         }
 
         self.previous_buttons = _buttons;

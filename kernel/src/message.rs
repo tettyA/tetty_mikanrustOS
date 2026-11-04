@@ -30,4 +30,11 @@ pub enum Message {
         src_task: u64, // 走査官僚通知(layerFinish)を返信してもう為の送信元タスクID
     },
     LayerFinish,
+    MouseMove {
+        x: i32,
+        y: i32,
+        dx: i32,
+        dy: i32,
+        buttons: u8,
+    },
 }

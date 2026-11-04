@@ -541,6 +541,7 @@ fn kernel_main_new_stack(
                 let _ = send_message(src_task, Message::LayerFinish);
             }
             Message::LayerFinish => {}
+            Message::MouseMove { .. } => {}
         }
     }
 }
