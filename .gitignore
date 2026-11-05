@@ -31,3 +31,4 @@ apps/paint/paint
 apps/stars/stars
 apps/syscall/libsyscall.rlib
 apps/winhello/winhello
+apps/cube/cube
