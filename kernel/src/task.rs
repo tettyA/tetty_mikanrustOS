@@ -514,6 +514,6 @@ pub fn initialize_task() {
     TIMER_MANAGER.with(|tm| {
         let tm = tm.as_mut().unwrap();
         let timeout = tm.get_tick() + TASK_TIMER_PERIOD;
-        tm.add_timer(&Timer::new(timeout, TASK_TIMER_VALUE));
+        tm.add_timer(&Timer::new(timeout, TASK_TIMER_VALUE, 1));
     });
 }

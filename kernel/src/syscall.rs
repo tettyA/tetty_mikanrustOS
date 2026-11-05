@@ -4,8 +4,8 @@ use crate::{
     graphics::{PixelDraw, Rectangle, Vector2D, to_color},
     layer::LAYER_MANAGER,
     message,
-    task::{receive_message, sleep},
-    timer::TIMER_MANAGER,
+    task::{current_task_id, receive_message, sleep},
+    timer::{self, TIMER_MANAGER},
     window::Window,
 };
 
@@ -36,8 +36,14 @@ pub mod errno {
     pub const E2BIG: i32 = 7;
     pub const EBADF: i32 = 9;
     pub const EFAULT: i32 = 14; // 不正なポインタ
+    pub const EINVAL: i32 = 22;
 }
-
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimerArgs {
+    pub timeout: u64,
+    pub value: i32,
+}
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MouseMoveArgs {
@@ -60,6 +66,7 @@ pub struct MouseButtonArgs {
 pub union AppEventArgs {
     pub mouse_move: MouseMoveArgs,
     pub mouse_button: MouseButtonArgs,
+    pub timer: TimerArgs,
 }
 
 #[repr(C)]
@@ -89,6 +96,7 @@ pub mod app_event {
     pub const QUIT: u32 = 0;
     pub const MOUSE_MOVE: u32 = 1;
     pub const MOUSE_BUTTON: u32 = 2;
+    pub const TIMER_TIMEOUT: u32 = 3;
 }
 // システムコール関数の型定義 (最大6引数、戻り値 SyscallResult)
 pub type SyscallFn = extern "C" fn(u64, u64, u64, u64, u64, u64) -> SyscallResult;
@@ -551,6 +559,17 @@ pub extern "C" fn sys_read_event(
                 };
                 i += 1;
             }
+            message::Message::TimerTimeout { timeout, value } => {
+                // アプリ用タイマは負の値で登録されている
+                if value < 0 {
+                    unsafe {
+                        let ev = &mut *app_events.add(i);
+                        ev.event_type = app_event::TIMER_TIMEOUT;
+                        ev.arg.timer = TimerArgs { timeout, value };
+                    }
+                    i += 1;
+                }
+            }
             _ => {}
         }
     }
@@ -560,9 +579,48 @@ pub extern "C" fn sys_read_event(
         error: 0,
     }
 }
+pub extern "C" fn sys_create_timer(
+    mode: u64,
+    timer_value: u64,
+    timeout_ms: u64,
+    _arg4: u64,
+    _arg5: u64,
+    _arg6: u64,
+) -> SyscallResult {
+    let timer_value = timer_value as i32;
+    if timer_value <= 0 {
+        return SyscallResult {
+            value: 0,
+            error: errno::EINVAL,
+        };
+    }
+
+    let task_id = current_task_id();
+
+    let mut timeout = timeout_ms * timer::TIMER_FREQ as u64 / 1000;
+
+    if (mode & 1) != 0 {
+        // 相対時間指定
+        let current_tick = TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()));
+        timeout += current_tick;
+    }
+
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        TIMER_MANAGER.with(|tm| {
+            if let Some(tm) = tm.as_mut() {
+                // アプリ用タイマは負数 (-timer_value) として登録する
+                tm.add_timer(&crate::timer::Timer::new(timeout, -timer_value, task_id));
+            }
+        });
+    });
+    SyscallResult {
+        value: timeout * 1000 / crate::timer::TIMER_FREQ as u64,
+        error: 0,
+    }
+}
 /// システムコールの関数ポインタテーブル (本家 syscall_table 相当)
 #[unsafe(no_mangle)]
-pub static SYSCALL_TABLE: [SyscallFn; 11] = [
+pub static SYSCALL_TABLE: [SyscallFn; 12] = [
     sys_log_string,
     sys_put_string,
     sys_exit,
@@ -574,6 +632,7 @@ pub static SYSCALL_TABLE: [SyscallFn; 11] = [
     sys_win_draw_line,
     sys_close_window,
     sys_read_event,
+    sys_create_timer,
 ];
 #[unsafe(no_mangle)]
 pub extern "C" fn GetCurrentTaskOSStackPointer() -> u64 {

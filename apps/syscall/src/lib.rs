@@ -1,6 +1,11 @@
 #![no_std]
 #![allow(dead_code)]
-
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimerArgs {
+    pub timeout: u64,
+    pub value: i32,
+}
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MouseButtonArgs {
@@ -23,6 +28,7 @@ pub struct MouseMoveArgs {
 pub union AppEventArgs {
     pub mouse_move: MouseMoveArgs,
     pub mouse_button: MouseButtonArgs,
+    pub timer: TimerArgs,
 }
 
 #[repr(C)]
@@ -57,7 +63,10 @@ pub mod app_event {
     pub const QUIT: u32 = 0;
     pub const MOUSE_MOVE: u32 = 1;
     pub const MOUSE_BUTTON: u32 = 2;
+    pub const TIMER_TIMEOUT: u32 = 3;
 }
+pub const TIMER_ONESHOT_REL: u32 = 1;
+pub const TIMER_ONESHOT_ABS: u32 = 0;
 pub const LAYER_NO_REDRAW: u64 = 0x0000_0001_0000_0000;
 /// システムコール 0x80000000: ログ文字列出力
 pub fn sys_log_string(level: u64, message: *const u8) -> SyscallResult {
@@ -335,6 +344,26 @@ pub fn sys_read_event(events: *mut AppEvent, len: usize) -> SyscallResult {
             in("eax") 0x8000_000au32,
             in("rdi") events as u64,
             in("rsi") len as u64,
+            out("rcx") _,
+            out("r11") _,
+            lateout("rax") value,
+            lateout("rdx") error,
+            clobber_abi("C"),
+        );
+    }
+    SyscallResult { value, error }
+}
+/// システムコール 0x8000000b: タイマ作成 (CreateTimer) (osbook_day23c)
+pub fn sys_create_timer(mode: u32, timer_value: i32, timeout_ms: u64) -> SyscallResult {
+    let mut value: u64;
+    let mut error: i32;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            in("eax") 0x8000_000bu32,
+            in("rdi") mode as u64,
+            in("rsi") timer_value as u64,
+            in("rdx") timeout_ms,
             out("rcx") _,
             out("r11") _,
             lateout("rax") value,

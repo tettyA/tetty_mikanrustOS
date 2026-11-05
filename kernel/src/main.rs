@@ -413,9 +413,17 @@ fn kernel_main_new_stack(
 
     timer::initialize_lapic_timer();
 
-    TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(200, 2)));
+    TIMER_MANAGER.with(|tm| {
+        tm.as_mut()
+            .unwrap()
+            .add_timer(&timer::Timer::new(200, 2, 1))
+    });
 
-    TIMER_MANAGER.with(|tm| tm.as_mut().unwrap().add_timer(&timer::Timer::new(700, -1)));
+    TIMER_MANAGER.with(|tm| {
+        tm.as_mut()
+            .unwrap()
+            .add_timer(&timer::Timer::new(700, -1, 1))
+    });
 
     // まだxhci走っていないのでcli/stiは不要
     let mut text_window_index: usize = 0;
@@ -424,7 +432,7 @@ fn kernel_main_new_stack(
     TIMER_MANAGER.with(|tm| {
         tm.as_mut()
             .unwrap()
-            .add_timer(&timer::Timer::new(timer_50sec, textbox_cursor_timer));
+            .add_timer(&timer::Timer::new(timer_50sec, textbox_cursor_timer, 1));
     });
     let mut textbox_cursor_visible = false;
 
@@ -499,6 +507,7 @@ fn kernel_main_new_stack(
                         tm.as_mut().unwrap().add_timer(&timer::Timer::new(
                             timeout + timer_50sec,
                             textbox_cursor_timer,
+                            1,
                         ));
                     });
                     unsafe { asm!("sti") };

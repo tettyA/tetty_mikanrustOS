@@ -61,6 +61,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "paint"
+version = "0.1.0"
+dependencies = [
+ "syscall",
+]
+
+[[package]]
 name = "rpn"
 version = "0.1.0"
 dependencies = [
@@ -98,6 +105,13 @@ dependencies = [
 [[package]]
 name = "syscall"
 version = "0.1.0"
+
+[[package]]
+name = "timer"
+version = "0.1.0"
+dependencies = [
+ "syscall",
+]
 
 [[package]]
 name = "volatile"

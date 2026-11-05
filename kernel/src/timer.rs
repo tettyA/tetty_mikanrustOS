@@ -64,16 +64,24 @@ pub fn lapic_timer_on_interrupt() -> bool {
 pub(crate) struct Timer {
     timeout: u64, // タイムアウト時刻 (tick)
     value: i32,   // タイムアウト時に送信する値
+    task_id: u64,
 }
 impl Timer {
-    pub fn new(timeout: u64, value: i32) -> Self {
-        Self { timeout, value }
+    pub fn new(timeout: u64, value: i32, task_id: u64) -> Self {
+        Self {
+            timeout,
+            value,
+            task_id,
+        }
     }
     pub fn get_timeout(&self) -> u64 {
         self.timeout
     }
     pub fn get_value(&self) -> i32 {
         self.value
+    }
+    pub fn get_task_id(&self) -> u64 {
+        self.task_id
     }
 }
 impl PartialEq for Timer {
@@ -103,7 +111,7 @@ impl TimerManager {
     pub fn new() -> Self {
         Self {
             tick: 0,
-            timers: alloc::vec![Timer::new(u64::MAX, 0)], // 番兵
+            timers: alloc::vec![Timer::new(u64::MAX, 0, 0)], // 番兵
         }
     }
 
@@ -118,7 +126,7 @@ impl TimerManager {
             if timer.get_value() == TASK_TIMER_VALUE {
                 task_timer_timeout = true;
                 // pop からのpushではなく，0番目を書き換えてソートすることで，Vecの再確保を避ける
-                self.timers[0] = Timer::new(self.tick + TASK_TIMER_PERIOD, TASK_TIMER_VALUE);
+                self.timers[0] = Timer::new(self.tick + TASK_TIMER_PERIOD, TASK_TIMER_VALUE, 1);
                 self.timers.sort_unstable();
                 continue;
             }
@@ -128,7 +136,7 @@ impl TimerManager {
                 value: timer.get_value(),
             };
             // TODO: Vecなので計算量改善 (DequeueとかBinaryHeapとか)
-            let _ = crate::task::send_message(1, message);
+            let _ = crate::task::send_message(timer.get_task_id(), message);
             self.timers.remove(0);
         }
         task_timer_timeout
@@ -147,4 +155,4 @@ pub static TIMER_MANAGER: Global<Option<TimerManager>> = Global::new(None);
 pub static LAPIC_TIMER_FREQ: Global<Option<u32>> = Global::new(None);
 pub const TIMER_FREQ: u32 = 100; // 100Hz /s 1秒で100回tickが呼ばれる
 pub const TASK_TIMER_PERIOD: u64 = TIMER_FREQ as u64 / 50; // 0.02sec
-pub const TASK_TIMER_VALUE: i32 = i32::MIN;
+pub const TASK_TIMER_VALUE: i32 = i32::MAX;

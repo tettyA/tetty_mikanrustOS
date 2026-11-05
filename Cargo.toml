@@ -8,5 +8,7 @@ members = [
     "apps/stars",
     "apps/lines",
     "apps/eye",
+    "apps/paint",
+    "apps/timer",
 ]
 
