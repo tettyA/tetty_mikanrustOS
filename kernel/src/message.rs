@@ -23,6 +23,7 @@ pub enum Message {
         keycode: u8,
         modifier: u8,
         ascii: char,
+        press: bool,
     },
     Layer {
         op: LayerOperation,

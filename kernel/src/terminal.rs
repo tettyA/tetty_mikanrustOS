@@ -538,17 +538,20 @@ pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64
                 keycode,
                 modifier,
                 ascii,
+                press,
             } => {
-                let area = terminal.input_key(modifier, keycode, ascii);
+                if press {
+                    let area = terminal.input_key(modifier, keycode, ascii);
 
-                let _ = task::send_message(
-                    1,
-                    Message::Layer {
-                        op: LayerOperation::DrawArea { area },
-                        layer_id,
-                        src_task: task_id,
-                    },
-                );
+                    let _ = task::send_message(
+                        1,
+                        Message::Layer {
+                            op: LayerOperation::DrawArea { area },
+                            layer_id,
+                            src_task: task_id,
+                        },
+                    );
+                }
             }
             _ => {}
         }

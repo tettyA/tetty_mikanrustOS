@@ -71,9 +71,6 @@ mod modifier {
 }
 
 extern "C" fn keyboard_observer(modifier: u8, keycode: u8, press: bool) {
-    if !press {
-        return;
-    }
     let msg = Message::KeyPush {
         keycode,
         modifier,
@@ -82,6 +79,7 @@ extern "C" fn keyboard_observer(modifier: u8, keycode: u8, press: bool) {
         } else {
             KEYCODE_MAP[keycode as usize]
         },
+        press,
     };
     let _ = crate::task::send_message(1, msg);
 }

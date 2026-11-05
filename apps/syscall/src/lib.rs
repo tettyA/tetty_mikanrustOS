@@ -2,6 +2,14 @@
 #![allow(dead_code)]
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyPushArgs {
+    pub modifier: u8,
+    pub keycode: u8,
+    pub ascii: u8,
+    pub press: i32,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimerArgs {
     pub timeout: u64,
     pub value: i32,
@@ -29,6 +37,7 @@ pub union AppEventArgs {
     pub mouse_move: MouseMoveArgs,
     pub mouse_button: MouseButtonArgs,
     pub timer: TimerArgs,
+    pub keypush: KeyPushArgs,
 }
 
 #[repr(C)]
@@ -64,6 +73,7 @@ pub mod app_event {
     pub const MOUSE_MOVE: u32 = 1;
     pub const MOUSE_BUTTON: u32 = 2;
     pub const TIMER_TIMEOUT: u32 = 3;
+    pub const KEY_PUSH: u32 = 4;
 }
 pub const TIMER_ONESHOT_REL: u32 = 1;
 pub const TIMER_ONESHOT_ABS: u32 = 0;

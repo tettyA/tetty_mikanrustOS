@@ -40,6 +40,14 @@ pub mod errno {
 }
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyPushArgs {
+    pub modifier: u8,
+    pub keycode: u8,
+    pub ascii: u8,
+    pub press: i32, // 1: press, 0: release
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimerArgs {
     pub timeout: u64,
     pub value: i32,
@@ -67,6 +75,7 @@ pub union AppEventArgs {
     pub mouse_move: MouseMoveArgs,
     pub mouse_button: MouseButtonArgs,
     pub timer: TimerArgs,
+    pub keypush: KeyPushArgs,
 }
 
 #[repr(C)]
@@ -97,6 +106,7 @@ pub mod app_event {
     pub const MOUSE_MOVE: u32 = 1;
     pub const MOUSE_BUTTON: u32 = 2;
     pub const TIMER_TIMEOUT: u32 = 3;
+    pub const KEY_PUSH: u32 = 4;
 }
 // システムコール関数の型定義 (最大6引数、戻り値 SyscallResult)
 pub type SyscallFn = extern "C" fn(u64, u64, u64, u64, u64, u64) -> SyscallResult;
@@ -510,12 +520,27 @@ pub extern "C" fn sys_read_event(
 
         match msg {
             crate::message::Message::KeyPush {
-                keycode, modifier, ..
+                keycode,
+                modifier,
+                ascii,
+                press,
             } => {
                 // keycode 20 は 'q' キー。modifier の bit0 (LControl) または bit4 (RControl)
                 if keycode == 20 && (modifier & 0b0001_0001) != 0 {
                     unsafe {
                         (*app_events.add(i)).event_type = app_event::QUIT;
+                    }
+                    i += 1;
+                } else {
+                    unsafe {
+                        let ev = &mut *app_events.add(i);
+                        ev.event_type = app_event::KEY_PUSH;
+                        ev.arg.keypush = KeyPushArgs {
+                            modifier,
+                            keycode,
+                            ascii: ascii as u8,
+                            press: if press { 1 } else { 0 },
+                        }
                     }
                     i += 1;
                 }

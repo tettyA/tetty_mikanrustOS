@@ -527,10 +527,18 @@ fn kernel_main_new_stack(
                 keycode,
                 modifier: _,
                 ascii,
+                press,
             } => {
                 let act = layer::get_active();
                 if act == text_window_id {
-                    input_text_window(ascii, &text_window, &mut text_window_index, text_window_id);
+                    if press {
+                        input_text_window(
+                            ascii,
+                            &text_window,
+                            &mut text_window_index,
+                            text_window_id,
+                        );
+                    }
                 } else if let Some(target_task_id) = layer::get_task_by_layer(act) {
                     let _ = send_message(target_task_id, msg);
                 } else {
