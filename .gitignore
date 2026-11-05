@@ -32,3 +32,5 @@ apps/stars/stars
 apps/syscall/libsyscall.rlib
 apps/winhello/winhello
 apps/cube/cube
+apps/blocks/blocks
+apps/tetris/tetris

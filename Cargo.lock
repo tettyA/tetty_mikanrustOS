@@ -15,6 +15,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
+name = "blocks"
+version = "0.1.0"
+dependencies = [
+ "syscall",
+]
+
+[[package]]
 name = "const_fn"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -112,6 +119,13 @@ dependencies = [
 [[package]]
 name = "syscall"
 version = "0.1.0"
+
+[[package]]
+name = "tetris"
+version = "0.1.0"
+dependencies = [
+ "syscall",
+]
 
 [[package]]
 name = "timer"
