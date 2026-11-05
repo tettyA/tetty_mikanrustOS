@@ -1,0 +1,13 @@
+[package]
+name = "cube"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+syscall = { path = "../syscall" }
+
+[[bin]]
+name = "cube"
+path = "main.rs"
+test = false
+bench = false
