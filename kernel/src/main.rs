@@ -539,6 +539,12 @@ fn kernel_main_new_stack(
                             text_window_id,
                         );
                     }
+                } else if press && keycode == 59 {
+                    TASK_MANAGER.with(|tm| {
+                        let tm = tm.as_mut().unwrap();
+                        let id = tm.new_task().init_context(terminal::task_terminal, 0).id();
+                        let _ = tm.wakeup(id, None);
+                    });
                 } else if let Some(target_task_id) = layer::get_task_by_layer(act) {
                     let _ = send_message(target_task_id, msg);
                 } else {
