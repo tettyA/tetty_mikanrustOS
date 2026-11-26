@@ -1,6 +1,10 @@
 use core::{cell::RefCell, ptr::null_mut};
 
-use crate::{global::Global, message::LayerOperation};
+use crate::{
+    global::Global,
+    message::{LayerOperation, Message},
+    task,
+};
 
 use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, vec::Vec};
 
@@ -205,6 +209,8 @@ impl LayerManager {
                 }
             }
             self.draw_id(self.active_layer);
+
+            send_window_active_message(self.active_layer, false);
         }
 
         self.active_layer = layer_id;
@@ -221,6 +227,8 @@ impl LayerManager {
                 self.up_down(self.active_layer, new_h as i32);
             }
             self.draw_id(self.active_layer);
+
+            send_window_active_message(self.active_layer, true);
         }
     }
 
@@ -401,4 +409,10 @@ pub fn unregister_layer_task(layer_id: u32) {
 /// レイヤIDに対応するタスクIDを取得する。
 pub fn get_task_by_layer(layer_id: u32) -> Option<u64> {
     LAYER_TASK_MAP.with(|map| map.get(&layer_id).copied())
+}
+
+fn send_window_active_message(layer_id: u32, activate: bool) {
+    if let Some(task_id) = get_task_by_layer(layer_id) {
+        let _ = task::send_message(task_id, Message::WindowActive { activate });
+    }
 }

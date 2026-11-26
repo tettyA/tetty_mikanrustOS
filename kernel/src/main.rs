@@ -442,11 +442,10 @@ fn kernel_main_new_stack(
 
     x86_64::instructions::interrupts::enable();
 
-    let task_terminal_id = TASK_MANAGER.with(|tm| {
+    TASK_MANAGER.with(|tm| {
         let tm = tm.as_mut().unwrap();
         let id = tm.new_task().init_context(terminal::task_terminal, 0).id();
         tm.wakeup(id, None).unwrap();
-        id
     });
 
     let main_task_id = TASK_MANAGER.with(|tm| tm.as_ref().unwrap().current_task_id());
@@ -521,7 +520,6 @@ fn kernel_main_new_stack(
                     });
                     redraw_layers_id(text_window_id);
                 }
-                let _ = send_message(task_terminal_id, msg);
             }
             Message::KeyPush {
                 keycode,
@@ -566,6 +564,7 @@ fn kernel_main_new_stack(
             Message::LayerFinish => {}
             Message::MouseMove { .. } => {}
             Message::MouseButton { .. } => {}
+            Message::WindowActive { .. } => {}
         }
     }
 }

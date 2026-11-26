@@ -501,14 +501,34 @@ pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64
     let layer_id = terminal.layer_id();
 
     TERMINALS.with(|map| map.insert(task_id, &mut terminal as *mut Terminal));
+
+    crate::layer::register_layer_task(layer_id, task_id);
+
     LAYER_MANAGER.with(|lm| {
         let Some(lm) = lm.as_mut() else { return };
         lm.move_layer(layer_id, Vector2D { x: 100, y: 200 });
         lm.activate(layer_id);
     });
 
-    crate::layer::register_layer_task(layer_id, task_id);
+    let add_blink_timer = |t: u64| {
+        x86_64::instructions::interrupts::without_interrupts(|| {
+            crate::timer::TIMER_MANAGER.with(|tm| {
+                if let Some(tm) = tm.as_mut() {
+                    tm.add_timer(&crate::timer::Timer::new(
+                        t + (crate::timer::TIMER_FREQ as f64 * 0.5) as u64,
+                        1,
+                        task_id,
+                    ));
+                }
+            })
+        })
+    };
 
+    let currnet_tick = x86_64::instructions::interrupts::without_interrupts(|| {
+        crate::timer::TIMER_MANAGER.with(|tm| tm.as_ref().map_or(0, |tm| tm.get_tick()))
+    });
+    add_blink_timer(currnet_tick);
+    let mut window_isactive = false;
     loop {
         x86_64::instructions::interrupts::disable();
         let Some(msg) = receive_message(task_id) else {
@@ -520,19 +540,23 @@ pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64
         x86_64::instructions::interrupts::enable();
 
         match msg {
-            Message::TimerTimeout { .. } => {
-                let area = x86_64::instructions::interrupts::without_interrupts(|| {
-                    terminal.blink_cursor()
-                });
-
-                let _ = task::send_message(
-                    1,
-                    Message::Layer {
-                        op: LayerOperation::DrawArea { area },
-                        layer_id,
-                        src_task: task_id,
-                    },
-                );
+            Message::TimerTimeout { timeout, .. } => {
+                // 次の0.5秒後のタイマーを登録
+                add_blink_timer(timeout);
+                // ウィンドウがアクティブな場合のみカーソルを点滅描画する
+                if window_isactive {
+                    let area = x86_64::instructions::interrupts::without_interrupts(|| {
+                        terminal.blink_cursor()
+                    });
+                    let _ = task::send_message(
+                        1,
+                        Message::Layer {
+                            op: LayerOperation::DrawArea { area },
+                            layer_id,
+                            src_task: task_id,
+                        },
+                    );
+                }
             }
             Message::KeyPush {
                 keycode,
@@ -552,6 +576,9 @@ pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64
                         },
                     );
                 }
+            }
+            Message::WindowActive { activate } => {
+                window_isactive = activate;
             }
             _ => {}
         }

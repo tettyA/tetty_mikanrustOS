@@ -44,4 +44,7 @@ pub enum Message {
         press: bool,
         button: u8,
     },
+    WindowActive {
+        activate: bool,
+    },
 }
