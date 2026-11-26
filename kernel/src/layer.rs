@@ -147,11 +147,7 @@ impl LayerManager {
 
         if let Some(old_pos) = self.layer_stack.iter().position(|&x| x == id) {
             let layer_id = self.layer_stack.remove(old_pos);
-            let insert_pos = if new_pos > old_pos {
-                (new_pos - 1).min(self.layer_stack.len())
-            } else {
-                new_pos
-            };
+            let insert_pos = new_pos.min(self.layer_stack.len());
             self.layer_stack.insert(insert_pos, layer_id);
         } else {
             self.layer_stack.insert(new_pos, id);
@@ -222,6 +218,7 @@ impl LayerManager {
                 }
             }
 
+            self.up_down(self.active_layer, 0);
             if let Some(mouse_h) = self.get_height(self.mouse_layer) {
                 let new_h = if mouse_h > 0 { mouse_h - 1 } else { 0 };
                 self.up_down(self.active_layer, new_h as i32);
