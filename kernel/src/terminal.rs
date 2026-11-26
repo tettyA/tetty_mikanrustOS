@@ -509,7 +509,7 @@ pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64
         lm.move_layer(layer_id, Vector2D { x: 100, y: 200 });
         lm.activate(layer_id);
     });
-
+    //
     let add_blink_timer = |t: u64| {
         x86_64::instructions::interrupts::without_interrupts(|| {
             crate::timer::TIMER_MANAGER.with(|tm| {
