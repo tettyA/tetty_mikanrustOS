@@ -42,6 +42,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fault"
+version = "0.1.0"
+dependencies = [
+ "syscall",
+]
+
+[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [

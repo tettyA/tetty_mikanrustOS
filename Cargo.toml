@@ -13,5 +13,6 @@ members = [
     "apps/cube",
     "apps/blocks",
     "apps/tetris",
+    "apps/fault",
 ]
 
