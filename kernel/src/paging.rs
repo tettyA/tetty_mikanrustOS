@@ -186,7 +186,7 @@ static PAGE_DIRECTORY: Global<[PageTable; 64]> = Global::new([PageTable([0; 512]
 pub fn setup_identify_page_table() {
     PML4_TABLE.with(|pml4_table| {
         PDP_TABLE.with(|pdp_table| {
-            PAGE_DIRECTORY.with(|page_directory| unsafe {
+            PAGE_DIRECTORY.with(|page_directory| {
                 pml4_table.0[0] = (pdp_table.0.as_ptr() as u64) | 0x003;
                 for i_pdpt in 0..page_directory.len() {
                     pdp_table.0[i_pdpt] = (page_directory[i_pdpt].0.as_ptr() as u64) | 0x003;
@@ -195,19 +195,22 @@ pub fn setup_identify_page_table() {
                             (i_pdpt * PAGE_SIZE_1G + i_pd * PAGE_SIZE_2M) as u64 | 0x083;
                     }
                 }
-
-                let cr3_val = pml4_table.0.as_ptr() as u64;
-                asm!(
-                    "mov cr3, {}",
-                    in(reg) cr3_val
-                );
             })
         })
     });
+    reset_cr3();
 }
-
+pub fn set_cr3(value: u64) {
+    unsafe {
+        asm!("mov cr3, {}",in(reg) value);
+    }
+}
+pub fn reset_cr3() {
+    let cr3_val = PML4_TABLE.with(|pml4_table| pml4_table.0.as_ptr() as u64);
+    set_cr3(cr3_val);
+}
 /// メモリマネージャから新しいページマップ（4KiB）を確保し、ゼロクリアして返す
-fn new_page_map() -> Result<*mut PageMapEntry> {
+pub fn new_page_map() -> Result<*mut PageMapEntry> {
     let frame = MEMORY_MANAGER.with(|mm| mm.allocate(1))?;
     let ptr = (frame.id * BYTES_PER_FRAME) as *mut PageMapEntry;
     unsafe {

@@ -17,6 +17,39 @@ use crate::{
     task::{self, receive_message},
     window::{MARGIN_X, MARGIN_Y, TOP_LEFT_MARGIN, Window, draw_terminal},
 };
+
+struct Pml4Guard;
+impl Drop for Pml4Guard {
+    fn drop(&mut self) {
+        if let Err(err) = free_pml4() {
+            crate::printk!("failed to free pml4: {}\n", err);
+        }
+    }
+}
+
+/// 現在のタスク用に新しい PML4 を確保し、カーネル空間（前半256エントリ）をコピーして CR3 を切り替える
+fn setup_pml4() -> Result<Pml4Guard> {
+    let pml4 = crate::paging::new_page_map()?;
+    let current_pml4 = crate::task::read_cr3() as *const crate::paging::PageMapEntry;
+    unsafe {
+        // 下位半分（カーネルの恒等写像空間: 256エントリ = 2048バイト）だけをコピーする
+        core::ptr::copy_nonoverlapping(current_pml4, pml4, 256);
+    }
+    let cr3 = pml4 as u64;
+    crate::paging::set_cr3(cr3);
+    crate::task::set_current_task_cr3(cr3);
+    Ok(Pml4Guard)
+}
+/// CR3 をカーネル用ページテーブルに戻し、アプリ用 PML4 自体の物理フレームを解放する
+fn free_pml4() -> Result<()> {
+    let cr3 = crate::task::current_task_cr3();
+    crate::task::set_current_task_cr3(0);
+    crate::paging::reset_cr3();
+    let frame = crate::memory_manager::FrameID {
+        id: (cr3 as usize) / crate::memory_manager::BYTES_PER_FRAME,
+    };
+    crate::memory_manager::MEMORY_MANAGER.with(|mm| mm.free(frame, 1))
+}
 pub static TERMINALS: Global<BTreeMap<u64, *mut Terminal>> = Global::new(BTreeMap::new());
 pub struct Terminal {
     task_id: u64,
@@ -357,6 +390,8 @@ impl Terminal {
             f();
             return Ok(());
         }
+
+        let _pml4 = setup_pml4()?;
 
         let app = load_elf(&file_buf)?;
         let argv = ArgVector::new(command, first_arg);

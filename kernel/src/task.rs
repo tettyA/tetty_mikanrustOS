@@ -462,6 +462,22 @@ pub fn current_task_os_stack_ptr() -> u64 {
         tm.task_mut(current_id).unwrap().os_stack_ptr
     })
 }
+/// 現在実行中のタスクのコンテキストに保存されている CR3 を取得する
+pub fn current_task_cr3() -> u64 {
+    TASK_MANAGER.with(|tm| {
+        let tm = tm.as_mut().unwrap();
+        let current_id = tm.current_task_id();
+        tm.task_mut(current_id).unwrap().context.cr3
+    })
+}
+/// 現在実行中のタスクのコンテキストの CR3 を更新する
+pub fn set_current_task_cr3(cr3: u64) {
+    TASK_MANAGER.with(|tm| {
+        let tm = tm.as_mut().unwrap();
+        let current_id = tm.current_task_id();
+        tm.task_mut(current_id).unwrap().context.cr3 = cr3;
+    });
+}
 pub fn switch_task(current_ctx: *const TaskContext) {
     let next_ctx = TASK_MANAGER.with(|tm| {
         let tm = tm.as_mut()?;
