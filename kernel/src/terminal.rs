@@ -1,7 +1,9 @@
 use alloc::{
+    boxed::Box,
     collections::{BTreeMap, VecDeque},
     format,
     rc::Rc,
+    string::String,
 };
 use core::cell::RefCell;
 
@@ -53,7 +55,7 @@ fn free_pml4() -> Result<()> {
 pub static TERMINALS: Global<BTreeMap<u64, *mut Terminal>> = Global::new(BTreeMap::new());
 pub struct Terminal {
     task_id: u64,
-    window: Rc<RefCell<Window>>,
+    window: Option<Rc<RefCell<Window>>>,
     layer_id: u32,
     cursor: Vector2D<usize>,
     cursor_visible: bool,
@@ -61,6 +63,7 @@ pub struct Terminal {
     linebuf_index: usize,
     cmd_history: VecDeque<[u8; Self::LINE_MAX]>,
     cmd_history_index: i32,
+    show_window: bool,
 }
 
 impl Terminal {
@@ -68,34 +71,39 @@ impl Terminal {
     pub const COLUMNS: usize = 60;
     pub const LINE_MAX: usize = 128;
 
-    pub fn new(task_id: u64) -> Self {
-        let (layer_id, window) = LAYER_MANAGER.with(|lm| {
-            let lm = lm.as_mut().unwrap();
-            let pixel_format = lm.pixel_format();
-            let width = Self::COLUMNS * 8 + 8 + MARGIN_X;
-            let height = Self::ROWS * 16 + 8 + MARGIN_Y;
-            let window = Rc::new(RefCell::new(Window::new_toplevel(
-                width,
-                height,
-                pixel_format,
-                "tettyATerm",
-            )));
-            let inner_size = window.borrow().inner_size();
+    pub fn new(task_id: u64, show_window: bool) -> Self {
+        let (layer_id, window) = if show_window {
+            let (layer_id, window) = LAYER_MANAGER.with(|lm| {
+                let lm = lm.as_mut().unwrap();
+                let pixel_format = lm.pixel_format();
+                let width = Self::COLUMNS * 8 + 8 + MARGIN_X;
+                let height = Self::ROWS * 16 + 8 + MARGIN_Y;
+                let window = Rc::new(RefCell::new(Window::new_toplevel(
+                    width,
+                    height,
+                    pixel_format,
+                    "tettyATerm",
+                )));
+                let inner_size = window.borrow().inner_size();
 
-            draw_terminal(
-                &window.borrow_mut().inner_writer(),
-                Vector2D { x: 0, y: 0 },
-                inner_size,
-            );
+                draw_terminal(
+                    &window.borrow_mut().inner_writer(),
+                    Vector2D { x: 0, y: 0 },
+                    inner_size,
+                );
 
-            let layer_id = lm
-                .new_layer()
-                .set_window(window.clone())
-                .set_draggable(true)
-                .id;
+                let layer_id = lm
+                    .new_layer()
+                    .set_window(window.clone())
+                    .set_draggable(true)
+                    .id;
 
-            (layer_id, window)
-        });
+                (layer_id, window)
+            });
+            (layer_id, Some(window))
+        } else {
+            (0, None)
+        };
 
         let mut cmd_history = VecDeque::with_capacity(8);
         cmd_history.resize(8, [0; Self::LINE_MAX]);
@@ -110,9 +118,11 @@ impl Terminal {
             linebuf_index: 0,
             cmd_history,
             cmd_history_index: -1,
+            show_window,
         };
-        term.print(">");
-
+        if show_window {
+            term.print(">");
+        }
         term
     }
 
@@ -142,6 +152,9 @@ impl Terminal {
     }
 
     fn draw_cursor(&mut self, visible: bool) {
+        let Some(window) = &self.window else {
+            return;
+        };
         let color = if visible {
             to_color(0xffffff)
         } else {
@@ -151,7 +164,7 @@ impl Terminal {
         let pos = self.calc_cursor_pos();
 
         crate::graphics::fill_rectangle(
-            &self.window.borrow_mut().writer(),
+            &window.borrow_mut().writer(),
             &pos,
             &Vector2D { x: 7, y: 15 },
             &color,
@@ -159,6 +172,9 @@ impl Terminal {
     }
 
     fn scroll1(&mut self) {
+        let Some(window) = &self.window else {
+            return;
+        };
         let move_src = Rectangle {
             pos_lu: Vector2D {
                 x: (TOP_LEFT_MARGIN.x + 4) as i32,
@@ -170,7 +186,7 @@ impl Terminal {
             },
         };
 
-        self.window.borrow_mut().window_move(
+        window.borrow_mut().window_move(
             Vector2D {
                 x: (TOP_LEFT_MARGIN.x + 4) as i32,
                 y: (TOP_LEFT_MARGIN.y + 4) as i32,
@@ -179,7 +195,7 @@ impl Terminal {
         );
 
         fill_rectangle(
-            &self.window.borrow_mut().inner_writer(),
+            &window.borrow_mut().inner_writer(),
             &Vector2D {
                 x: 4,
                 y: 4 + 16 * self.cursor.y,
@@ -204,14 +220,16 @@ impl Terminal {
         if c == b'\n' {
             self.newline();
         } else {
-            let pos = self.calc_cursor_pos();
-            write_ascii(
-                &self.window.borrow_mut().writer(),
-                pos.x,
-                pos.y,
-                c,
-                &to_color(0xffffff),
-            );
+            if let Some(window) = &self.window {
+                let pos = self.calc_cursor_pos();
+                write_ascii(
+                    &window.borrow_mut().writer(),
+                    pos.x,
+                    pos.y,
+                    c,
+                    &to_color(0xffffff),
+                );
+            }
 
             if self.cursor.x == Self::COLUMNS - 1 {
                 self.newline();
@@ -232,12 +250,16 @@ impl Terminal {
             self.print_char(c);
         }
         self.draw_cursor(true);
+        let Some(window) = &self.window else {
+            return;
+        };
+
         let cursor_after = self.calc_cursor_pos();
         let draw_pos = Vector2D {
             x: TOP_LEFT_MARGIN.x as i32,
             y: cursor_before.y as i32,
         };
-        let inner_size = self.window.borrow().inner_size();
+        let inner_size = window.borrow().inner_size();
         let draw_size = Vector2D {
             x: inner_size.x as i32,
             y: (cursor_after.y as i32 - cursor_before.y as i32) + 16,
@@ -270,15 +292,17 @@ impl Terminal {
             }
             self.print("\n");
         } else if command == "clear" {
-            fill_rectangle(
-                &self.window.borrow_mut().inner_writer(),
-                &Vector2D { x: 4, y: 4 },
-                &Vector2D {
-                    x: 8 * Self::COLUMNS,
-                    y: 16 * Self::ROWS,
-                },
-                &to_color(0),
-            );
+            if let Some(window) = &self.window {
+                fill_rectangle(
+                    &window.borrow_mut().inner_writer(),
+                    &Vector2D { x: 4, y: 4 },
+                    &Vector2D {
+                        x: 8 * Self::COLUMNS,
+                        y: 16 * Self::ROWS,
+                    },
+                    &to_color(0),
+                );
+            }
             self.cursor.y = 0;
         } else if command == "lspci" {
             for i in 0..pci::num_device() {
@@ -359,6 +383,15 @@ impl Terminal {
                 }
                 self.draw_cursor(true);
             }
+        } else if command == "noterm" {
+            let data = first_arg
+                .map(|arg| Box::into_raw(Box::new(String::from(arg))) as i64)
+                .unwrap_or(0);
+            crate::task::TASK_MANAGER.with(|tm| {
+                let tm = tm.as_mut().unwrap();
+                let id = tm.new_task().init_context(task_terminal, data).id();
+                let _ = tm.wakeup(id, None);
+            });
         } else if !command.is_empty() {
             let file_entry = crate::fat::find_file(command, 0);
             if let Some(entry) = file_entry {
@@ -422,17 +455,17 @@ impl Terminal {
                 y: 16,
             },
         };
-
-        fill_rectangle(
-            &self.window.borrow_mut().writer(),
-            &first_pos,
-            &Vector2D {
-                x: 8 * (Self::COLUMNS - 1),
-                y: 16,
-            },
-            &to_color(0),
-        );
-
+        if let Some(window) = &self.window {
+            fill_rectangle(
+                &window.borrow_mut().writer(),
+                &first_pos,
+                &Vector2D {
+                    x: 8 * (Self::COLUMNS - 1),
+                    y: 16,
+                },
+                &to_color(0),
+            );
+        }
         let history: &[u8] = if self.cmd_history_index >= 0 {
             let entry = &self.cmd_history[self.cmd_history_index as usize];
             let len = entry.iter().position(|&c| c == 0).unwrap_or(entry.len());
@@ -446,14 +479,15 @@ impl Terminal {
         self.linebuf_index = history.len();
 
         let s = core::str::from_utf8(history).unwrap_or("");
-        write_string(
-            &self.window.borrow_mut().writer(),
-            first_pos.x,
-            first_pos.y,
-            s,
-            &to_color(0xffffff),
-        );
-
+        if let Some(window) = &self.window {
+            write_string(
+                &window.borrow_mut().writer(),
+                first_pos.x,
+                first_pos.y,
+                s,
+                &to_color(0xffffff),
+            );
+        }
         self.cursor.x = self.linebuf_index + 1;
 
         draw_area
@@ -480,25 +514,29 @@ impl Terminal {
             self.newline();
             self.execute_line();
             self.print(">");
-            draw_area.pos_lu = Vector2D {
-                x: TOP_LEFT_MARGIN.x as i32,
-                y: TOP_LEFT_MARGIN.y as i32,
-            };
-            let inner_size = self.window.borrow().inner_size();
-            draw_area.size = Vector2D {
-                x: inner_size.x as i32,
-                y: inner_size.y as i32,
-            };
+            if let Some(window) = &self.window {
+                draw_area.pos_lu = Vector2D {
+                    x: TOP_LEFT_MARGIN.x as i32,
+                    y: TOP_LEFT_MARGIN.y as i32,
+                };
+                let inner_size = window.borrow().inner_size();
+                draw_area.size = Vector2D {
+                    x: inner_size.x as i32,
+                    y: inner_size.y as i32,
+                };
+            }
         } else if ascii == '\x08' {
             // Backspace
             if self.cursor.x > 0 {
                 self.cursor.x -= 1;
-                fill_rectangle(
-                    &self.window.borrow_mut().writer(),
-                    &self.calc_cursor_pos(),
-                    &Vector2D { x: 8, y: 16 },
-                    &to_color(0),
-                );
+                if let Some(window) = &self.window {
+                    fill_rectangle(
+                        &window.borrow_mut().writer(),
+                        &self.calc_cursor_pos(),
+                        &Vector2D { x: 8, y: 16 },
+                        &to_color(0),
+                    );
+                }
                 draw_area.pos_lu = Vector2D {
                     x: self.calc_cursor_pos().x as i32,
                     y: self.calc_cursor_pos().y as i32,
@@ -516,13 +554,15 @@ impl Terminal {
                 self.line_buf[self.linebuf_index] = ascii as u8;
                 self.linebuf_index += 1;
                 let pos = self.calc_cursor_pos();
-                write_ascii(
-                    &self.window.borrow_mut().writer(),
-                    pos.x,
-                    pos.y,
-                    ascii as u8,
-                    &to_color(0xffffff),
-                );
+                if let Some(window) = &self.window {
+                    write_ascii(
+                        &window.borrow_mut().writer(),
+                        pos.x,
+                        pos.y,
+                        ascii as u8,
+                        &to_color(0xffffff),
+                    );
+                }
                 self.cursor.x += 1;
             }
         }
@@ -531,19 +571,34 @@ impl Terminal {
     }
 }
 
-pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64) {
-    let mut terminal = Terminal::new(task_id);
+pub extern "C" fn task_terminal(task_id: u64, data: i64, _arg3: u64, _arg4: u64) {
+    let command_line: Option<String> = if data != 0 {
+        Some(unsafe { *Box::from_raw(data as *mut String) })
+    } else {
+        None
+    };
+    let show_window = command_line.is_none();
+
+    let mut terminal = Terminal::new(task_id, show_window);
     let layer_id = terminal.layer_id();
 
     TERMINALS.with(|map| map.insert(task_id, &mut terminal as *mut Terminal));
 
-    crate::layer::register_layer_task(layer_id, task_id);
+    if show_window {
+        crate::layer::register_layer_task(layer_id, task_id);
 
-    LAYER_MANAGER.with(|lm| {
-        let Some(lm) = lm.as_mut() else { return };
-        lm.move_layer(layer_id, Vector2D { x: 100, y: 200 });
-        lm.activate(layer_id);
-    });
+        LAYER_MANAGER.with(|lm| {
+            let Some(lm) = lm.as_mut() else { return };
+            lm.move_layer(layer_id, Vector2D { x: 100, y: 200 });
+            lm.activate(layer_id);
+        });
+    }
+    if let Some(cmd) = command_line {
+        for ch in cmd.chars() {
+            terminal.input_key(0, 0, ch);
+        }
+        terminal.input_key(0, 0, '\n');
+    }
     //
     let add_blink_timer = |t: u64| {
         x86_64::instructions::interrupts::without_interrupts(|| {
@@ -579,7 +634,7 @@ pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64
                 // 次の0.5秒後のタイマーを登録
                 add_blink_timer(timeout);
                 // ウィンドウがアクティブな場合のみカーソルを点滅描画する
-                if window_isactive {
+                if show_window && window_isactive {
                     let area = x86_64::instructions::interrupts::without_interrupts(|| {
                         terminal.blink_cursor()
                     });
@@ -602,14 +657,16 @@ pub extern "C" fn task_terminal(task_id: u64, _data: i64, _arg3: u64, _arg4: u64
                 if press {
                     let area = terminal.input_key(modifier, keycode, ascii);
 
-                    let _ = task::send_message(
-                        1,
-                        Message::Layer {
-                            op: LayerOperation::DrawArea { area },
-                            layer_id,
-                            src_task: task_id,
-                        },
-                    );
+                    if show_window {
+                        let _ = task::send_message(
+                            1,
+                            Message::Layer {
+                                op: LayerOperation::DrawArea { area },
+                                layer_id,
+                                src_task: task_id,
+                            },
+                        );
+                    }
                 }
             }
             Message::WindowActive { activate } => {
